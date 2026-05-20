@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, minimum-scale=1.0, viewport-fit=cover">
+  <title>病娇 · 血字浮现 · 恒久故障</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: black;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      font-family: 'Times New Roman', '宋体', '仿宋', '华文宋体', 'Georgia', '楷体', 'KaiTi', 'SimSun', 'FangSong', serif;
+      cursor: default;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    #wordCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      background: black;
+    }
+
+    .start-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: black;
+      cursor: pointer;
+    }
+    .start-text {
+      color: #8B0000;
+      font-family: 'Times New Roman', '宋体', '仿宋', '楷体', 'KaiTi', 'SimSun', serif;
+      font-size: 20px;
+      letter-spacing: 2px;
+      text-align: center;
+      opacity: 0.9;
+    }
+    .start-layer.fade-out {
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.4s ease;
+    }
+
+    .heart-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 20;
+    }
+
+    .clickable-heart {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+      color: white;
+      font-size: 32px;
+      font-weight: normal;
+      text-shadow: 0 0 6px rgba(255, 255, 255, 0.7);
+      transform: translate(-50%, -50%);
+      transition: opacity 0.2s ease;
+      cursor: pointer;
+      z-index: 30;
+      font-family: 'Times New Roman', 'Georgia', '宋体', serif;
+      line-height: 1;
+      background: transparent;
+      border: none;
+      display: block;
+      text-align: center;
+    }
+
+    .clickable-heart.show-heart {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .screen-shake {
+      animation: violentShake 0.4s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+    }
+
+    @keyframes violentShake {
+      0% { transform: translate(0, 0); }
+      10% { transform: translate(-14px, 9px); }
+      20% { transform: translate(16px, -12px); }
+      30% { transform: translate(-20px, 6px); }
+      40% { transform: translate(12px, -16px); }
+      50% { transform: translate(-8px, 14px); }
+      60% { transform: translate(18px, -7px); }
+      70% { transform: translate(-22px, -10px); }
+      80% { transform: translate(10px, 12px); }
+      90% { transform: translate(-12px, -14px); }
+      100% { transform: translate(0, 0); }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="wordCanvas"></canvas>
+
+  <div class="start-layer" id="startLayer">
+    <div class="start-text" id="startText">「点击进入」</div>
+  </div>
+
+  <div class="heart-layer" id="heartLayer">
+    <div class="clickable-heart" id="heartSymbol">♥</div>
+  </div>
+
+  <script>
+    (function() {
+      // ---------- 音频配置（已替换为稳定的 jsDelivr CDN 链接）----------
+      const BGM_URL = "https://cdn.jsdelivr.net/gh/femi67684-web/audio-files/m9hi24.mp3";
+      let bgmAudio = null;
+      let gameStarted = false;
+      let audioPlaying = false;
+      let glitchFinalActive = false;
+      let finalGlitchAnimationId = null;
+
+      // ---------- 文字池 ----------
+      const WORDS = [
+        "我爱你",
+        "乖乖留在我身边不好吗",
+        "你属于我",
+        "那个人是谁",
+        "永远",
+        "为什么不爱我",
+        "永远在一起",
+        "看着我",
+        "求求你",
+        "别离开我"
+      ];
+
+      // ---------- 时间参数 ----------
+      const INITIAL_BLACK_DURATION = 2;     // 点击后黑屏2秒
+      const LOVE_HOLD_DURATION = 2;         // 「爱」字定格2秒
+      const SPAWN_DURATION = 8;              // 文字蔓延8秒（匀速增加至100个）
+      const FAULT_DURATION = 3.5;            // 故障3.5秒
+      
+      const canvas = document.getElementById('wordCanvas');
+      const ctx = canvas.getContext('2d');
+
+      const heartElement = document.getElementById('heartSymbol');
+      const startLayer = document.getElementById('startLayer');
+
+      let wordsArray = [];
+      let animationFrameId = null;
+      let startTime = null;
+      let phase = 'idle';
+      let faultStartTime = 0;
+      let heartVisible = false;
+      let finalShown = false;
+
+      let w, h;
+      let isFaultPhase = false;
+      let lastGlitchSwitch = 0;
+      let glitchIntensity = 0;
+
+      let heartX = 0, heartY = 0;
+      let spawnStartTime = 0;
+      
+      const TARGET_WORD_COUNT = 100;
+      const MIN_FONT_SIZE = 18;
+      const MAX_FONT_SIZE = 35;
+
+      const BLOOD_RED = '#8B0000';
+
+      const rand = (min, max) => Math.random() * (max - min) + min;
+      const randInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+
+      // ---------- 增强版永久故障「我恨你」----------
+      function drawGlitchHate() {
+        if (!glitchFinalActive) return;
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = 'black';
+        ctx.fillRect(0, 0, w, h);
+        
+        const centerX = w / 2;
+        const centerY = h / 2;
+        let fontSize = Math.min(150, Math.max(75, w * 0.18));
+        ctx.font = `${fontSize}px 'Times New Roman', '黑体', 'SimHei', 'Microsoft YaHei', 'Impact', '楷体', serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const text = "我恨你";
+        
+        const time = Date.now() / 35;
+        const glitchX = Math.sin(time) * 5 + Math.sin(time * 2.7) * 3;
+        const glitchY = Math.cos(time * 1.5) * 3;
+        
+        ctx.fillStyle = `rgba(200, 30, 30, 0.95)`;
+        ctx.fillText(text, centerX + glitchX * 0.7, centerY + glitchY * 0.5);
+        
+        ctx.fillStyle = `rgba(40, 80, 220, 0.8)`;
+        ctx.fillText(text, centerX - glitchX * 1.1 - 2, centerY - 1);
+        
+        ctx.fillStyle = '#8B0000';
+        ctx.fillText(text, centerX + glitchX * 0.2, centerY + glitchY * 0.2);
+        
+        const textWidth = fontSize * 2.2;
+        const textLeft = centerX - textWidth/2;
+        const textRight = centerX + textWidth/2;
+        const textTop = centerY - fontSize/1.8;
+        const textBottom = centerY + fontSize/1.8;
+        
+        const tearCount = Math.floor(rand(2, 6));
+        for (let i = 0; i < tearCount; i++) {
+          const tearY = rand(textTop, textBottom);
+          const tearHeight = rand(3, fontSize * 0.2);
+          const offsetX = (Math.random() - 0.5) * 22;
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(textLeft, tearY - tearHeight/2, textWidth, tearHeight);
+          ctx.clip();
+          ctx.font = `${fontSize}px 'Times New Roman', '黑体', 'SimHei', 'Impact', '楷体', serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillStyle = `rgba(180, 20, 20, 0.95)`;
+          ctx.fillText(text, centerX + offsetX * 0.8, centerY + glitchY * 0.3);
+          ctx.fillStyle = `rgba(50, 70, 200, 0.7)`;
+          ctx.fillText(text, centerX - offsetX * 1.1, centerY - 1);
+          ctx.fillStyle = '#8B0000';
+          ctx.fillText(text, centerX + offsetX * 0.3, centerY + glitchY * 0.2);
+          ctx.restore();
+        }
+        
+        if (Math.random() < 0.45) {
+          const barCount = randInt(2, 5);
+          for (let i = 0; i < barCount; i++) {
+            const barX = rand(textLeft - 20, textRight + 20);
+            const barY = rand(textTop - 15, textBottom + 15);
+            const barW = rand(8, 45);
+            const barH = rand(2, 8);
+            ctx.fillStyle = `rgba(${randInt(100,255)}, ${randInt(20,80)}, ${randInt(20,80)}, 0.6)`;
+            ctx.fillRect(barX, barY, barW, barH);
+          }
+        }
+      }
+      
+      function startGlitchFinal() {
+        if (glitchFinalActive) return;
+        glitchFinalActive = true;
+        finalShown = true;
+        
+        if (animationFrameId) {
+          cancelAnimationFrame(animationFrameId);
+          animationFrameId = null;
+        }
+        wordsArray = [];
+        
+        function glitchLoop() {
+          if (!glitchFinalActive) return;
+          drawGlitchHate();
+          finalGlitchAnimationId = requestAnimationFrame(glitchLoop);
+        }
+        if (finalGlitchAnimationId) cancelAnimationFrame(finalGlitchAnimationId);
+        finalGlitchAnimationId = requestAnimationFrame(glitchLoop);
+      }
+      
+      function handleHeartClick(e) {
+        e.stopPropagation();
+        if (!heartVisible || finalShown || phase !== 'waitingHeart') return;
+
+        heartElement.classList.remove('show-heart');
+        heartVisible = false;
+
+        document.body.classList.add('screen-shake');
+        setTimeout(() => document.body.classList.remove('screen-shake'), 400);
+        
+        startGlitchFinal();
+      }
+
+      // ---------- 游戏核心逻辑 ----------
+      function createWord(text, x, y, fontSize) {
+        return {
+          text, x, y, fontSize, color: BLOOD_RED, alpha: 1.0,
+          glitchOffsetX: 0, glitchOffsetY: 0, glitchColorShift: false, corruptedText: null,
+        };
+      }
+      
+      function getRandomPosition(fontSize) {
+        const margin = fontSize * 1.1;
+        return { x: rand(margin, w - margin), y: rand(margin, h - margin) };
+      }
+      
+      function getCorruptedText(original) {
+        const chars = original.split('');
+        const symbols = ['▯', '█', '▮', '╳', '◈', '⬚', '⧖', '∅', '⍉', '⌧', '░', '▒', '▓', '□', '▪', '▴', '▾', '◂', '▸', '⏚'];
+        const level = rand(0.4, 0.9);
+        for (let i = 0; i < chars.length; i++) if (Math.random() < level) chars[i] = symbols[Math.floor(Math.random() * symbols.length)];
+        if (Math.random() < 0.5) {
+          let str = '';
+          for (let i = 0; i < randInt(2, original.length + 3); i++) str += symbols[Math.floor(Math.random() * symbols.length)];
+          return str;
+        }
+        return chars.join('');
+      }
+      
+      function applyGlitchToWords(intensity) {
+        for (let w of wordsArray) {
+          if (Math.random() < intensity * 0.9) {
+            w.glitchOffsetX = (Math.random() - 0.5) * 22 * intensity;
+            w.glitchOffsetY = (Math.random() - 0.5) * 18 * intensity;
+            w.glitchColorShift = Math.random() < intensity * 0.7;
+            w.corruptedText = Math.random() < intensity * 0.85 ? getCorruptedText(w.text) : null;
+          } else {
+            w.glitchOffsetX = w.glitchOffsetY = 0;
+            w.glitchColorShift = false;
+            w.corruptedText = null;
+          }
+        }
+      }
+      
+      function forceFullGlitch() {
+        for (let w of wordsArray) {
+          w.glitchOffsetX = (Math.random() - 0.5) * 26;
+          w.glitchOffsetY = (Math.random() - 0.5) * 22;
+          w.glitchColorShift = true;
+          w.corruptedText = getCorruptedText(w.text);
+        }
+      }
+      
+      function clearAllGlitch() {
+        for (let w of wordsArray) {
+          w.glitchOffsetX = w.glitchOffsetY = 0;
+          w.glitchColorShift = false;
+          w.corruptedText = null;
+        }
+      }
+      
+      function drawScene() {
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = 'black';
+        ctx.fillRect(0, 0, w, h);
+        for (let word of wordsArray) {
+          ctx.save();
+          const dx = word.x + (word.glitchOffsetX || 0);
+          const dy = word.y + (word.glitchOffsetY || 0);
+          ctx.font = `${word.fontSize}px 'Times New Roman', '宋体', '仿宋', '楷体', 'KaiTi', 'SimSun', serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          const displayText = word.corruptedText || word.text;
+          if (word.glitchColorShift && isFaultPhase) {
+            const off = 4 * (glitchIntensity || 0.7);
+            ctx.fillStyle = `rgba(210, 20, 20, 0.85)`;
+            ctx.fillText(displayText, dx - off * 0.6, dy);
+            ctx.fillStyle = `rgba(30, 160, 240, 0.75)`;
+            ctx.fillText(displayText, dx + off * 0.8, dy);
+            ctx.fillStyle = BLOOD_RED;
+            ctx.fillText(displayText, dx, dy);
+          } else {
+            ctx.fillStyle = BLOOD_RED;
+            ctx.fillText(displayText, dx, dy);
+          }
+          ctx.restore();
+        }
+        if (isFaultPhase && !heartVisible && phase === 'fault') {
+          ctx.save();
+          ctx.strokeStyle = 'rgba(170, 25, 25, 0.22)';
+          ctx.lineWidth = rand(1, 2.5);
+          for (let i = 0; i < 5; i++) {
+            const yPos = rand(0, h);
+            ctx.beginPath();
+            ctx.moveTo(0, yPos);
+            ctx.lineTo(w, yPos + rand(-5, 5));
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+      }
+      
+      function getTargetWordCount(spawnElapsed) {
+        if (spawnElapsed <= 0) return 1;
+        const progress = Math.min(spawnElapsed / SPAWN_DURATION, 1.0);
+        const count = 1 + Math.floor((TARGET_WORD_COUNT - 1) * progress);
+        return Math.min(count, TARGET_WORD_COUNT);
+      }
+      
+      function animationLoop(timestamp) {
+        if (!startTime) startTime = timestamp;
+        const totalElapsed = (timestamp - startTime) / 1000;
+
+        if (phase === 'black') {
+          if (totalElapsed >= INITIAL_BLACK_DURATION) {
+            phase = 'loveHold';
+            wordsArray.push(createWord("爱", w/2, h/2, 20));
+            startTime = timestamp;
+          }
+        }
+        else if (phase === 'loveHold') {
+          if (totalElapsed >= LOVE_HOLD_DURATION) {
+            phase = 'spawning';
+            spawnStartTime = timestamp;
+          }
+        }
+        else if (phase === 'spawning') {
+          const spawnElapsed = (timestamp - spawnStartTime) / 1000;
+          if (spawnElapsed < SPAWN_DURATION) {
+            const targetCount = getTargetWordCount(spawnElapsed);
+            while (wordsArray.length < targetCount) {
+              const wordText = WORDS[Math.floor(Math.random() * WORDS.length)];
+              const fontSize = rand(MIN_FONT_SIZE, MAX_FONT_SIZE);
+              const pos = getRandomPosition(fontSize);
+              wordsArray.push(createWord(wordText, pos.x, pos.y, fontSize));
+            }
+            isFaultPhase = false;
+            clearAllGlitch();
+          } else {
+            while (wordsArray.length < TARGET_WORD_COUNT) {
+              const wordText = WORDS[Math.floor(Math.random() * WORDS.length)];
+              const fontSize = rand(MIN_FONT_SIZE, MAX_FONT_SIZE);
+              const pos = getRandomPosition(fontSize);
+              wordsArray.push(createWord(wordText, pos.x, pos.y, fontSize));
+            }
+            phase = 'fault';
+            faultStartTime = timestamp;
+            isFaultPhase = true;
+            glitchIntensity = 0.6;
+            lastGlitchSwitch = timestamp;
+            applyGlitchToWords(glitchIntensity);
+          }
+        }
+        else if (phase === 'fault') {
+          const faultElapsed = (timestamp - faultStartTime) / 1000;
+          if (faultElapsed < FAULT_DURATION) {
+            if (timestamp - lastGlitchSwitch > rand(60, 180)) {
+              lastGlitchSwitch = timestamp;
+              glitchIntensity = rand(0.7, 1.0);
+              applyGlitchToWords(glitchIntensity);
+            }
+            if (Math.random() < 0.1) {
+              glitchIntensity = rand(0.6, 0.95);
+              applyGlitchToWords(glitchIntensity);
+            }
+          } else {
+            forceFullGlitch();
+            if (!heartVisible) {
+              heartX = w / 2;
+              heartY = h / 2;
+              heartElement.style.left = heartX + 'px';
+              heartElement.style.top = heartY + 'px';
+              heartElement.classList.add('show-heart');
+              heartVisible = true;
+              phase = 'waitingHeart';
+              isFaultPhase = true;
+            }
+          }
+        }
+        else if (phase === 'waitingHeart') {
+          if (Math.random() < 0.06) forceFullGlitch();
+        }
+        
+        drawScene();
+
+        if (!finalShown && phase !== 'idle') {
+          animationFrameId = requestAnimationFrame(animationLoop);
+        }
+      }
+
+      function resizeCanvas() {
+        w = window.innerWidth;
+        h = window.innerHeight;
+        canvas.width = w;
+        canvas.height = h;
+        heartX = w / 2;
+        heartY = h / 2;
+        if (heartElement) heartElement.style.left = heartX + 'px', heartElement.style.top = heartY + 'px';
+        if (glitchFinalActive) drawGlitchHate();
+        else if (!finalShown && wordsArray.length) drawScene();
+      }
+
+      function initAudio() { if (!bgmAudio) { bgmAudio = new Audio(BGM_URL); bgmAudio.loop = true; bgmAudio.volume = 0.68; bgmAudio.preload = "auto"; } }
+      function startMusic() { if (!bgmAudio) initAudio(); if (!audioPlaying) { bgmAudio.play().then(()=>audioPlaying=true).catch(e=>console.warn); } }
+      
+      function startGame() {
+        if (gameStarted) return;
+        gameStarted = true;
+        startMusic();
+        
+        if (startLayer) { 
+          startLayer.classList.add('fade-out'); 
+          setTimeout(()=>{ if(startLayer?.parentNode) startLayer.parentNode.removeChild(startLayer); },400); 
+        }
+        
+        resizeCanvas();
+        ctx.fillStyle = 'black';
+        ctx.fillRect(0, 0, w, h);
+        wordsArray = [];
+        phase = 'black';
+        isFaultPhase = false;
+        heartVisible = false;
+        finalShown = false;
+        startTime = null;
+        heartElement.classList.remove('show-heart');
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        animationFrameId = requestAnimationFrame(animationLoop);
+      }
+
+      function bindStartEvent() { 
+        const sd = document.getElementById('startLayer'); 
+        if(sd) sd.addEventListener('click', (e) => { 
+          e.stopPropagation(); 
+          if(!gameStarted) startGame(); 
+        }); 
+      }
+      
+      function init() {
+        initAudio();
+        resizeCanvas();
+        ctx.fillStyle = 'black';
+        ctx.fillRect(0, 0, w, h);
+        bindStartEvent();
+        heartElement.addEventListener('click', handleHeartClick);
+        window.addEventListener('resize', resizeCanvas);
+        window.addEventListener('beforeunload', () => {
+          if (animationFrameId) cancelAnimationFrame(animationFrameId);
+          if (finalGlitchAnimationId) cancelAnimationFrame(finalGlitchAnimationId);
+          if (bgmAudio) { bgmAudio.pause(); bgmAudio = null; }
+        });
+      }
+      init();
+    })();
+  </script>
+</body>
+</html>
