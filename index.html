@@ -127,7 +127,7 @@
 
   <script>
     (function() {
-      // ---------- 音频配置（已替换为稳定的 jsDelivr CDN 链接）----------
+      // ---------- 音频配置 ----------
       const BGM_URL = "https://cdn.jsdelivr.net/gh/femi67684-web/audio-files/m9hi24.mp3";
       let bgmAudio = null;
       let gameStarted = false;
@@ -153,7 +153,7 @@
       const INITIAL_BLACK_DURATION = 2;     // 点击后黑屏2秒
       const LOVE_HOLD_DURATION = 2;         // 「爱」字定格2秒
       const SPAWN_DURATION = 8;              // 文字蔓延8秒（匀速增加至100个）
-      const FAULT_DURATION = 3.5;            // 故障3.5秒
+      const FAULT_DURATION = 2;              // 故障2秒（已修改）
       
       const canvas = document.getElementById('wordCanvas');
       const ctx = canvas.getContext('2d');
