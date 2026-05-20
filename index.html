@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, minimum-scale=1.0, viewport-fit=cover">
-  <title>病娇 · 血字浮现 · 音频对齐版</title>
+  <title>病娇 · 血字浮现 · 恒久故障</title>
   <style>
     * {
       margin: 0;
@@ -127,21 +127,13 @@
 
   <script>
     (function() {
-      // ---------- 音频配置 ----------
+      // ---------- 音频配置（已替换为稳定的 jsDelivr CDN 链接）----------
       const BGM_URL = "https://cdn.jsdelivr.net/gh/femi67684-web/audio-files/m9hi24.mp3";
       let bgmAudio = null;
       let gameStarted = false;
       let audioPlaying = false;
       let glitchFinalActive = false;
       let finalGlitchAnimationId = null;
-      
-      // 音频对齐相关变量
-      let musicStartTime = null;        // 音乐实际开始播放的时间戳
-      let gameSequenceStarted = false;   // 是否已经进入时间轴序列
-      let blackScreenEndTime = 0;        // 黑屏结束的绝对时间
-      let loveHoldEndTime = 0;           // 「爱」字定格的绝对时间
-      let spawnEndTime = 0;              // 蔓延结束的绝对时间
-      let faultEndTime = 0;              // 故障结束的绝对时间
 
       // ---------- 文字池 ----------
       const WORDS = [
@@ -158,11 +150,10 @@
       ];
 
       // ---------- 时间参数 ----------
-      const MUSIC_START_DELAY = 1.0;      // 点击后第1秒音乐开始
-      const BLACK_DURATION = 2.0;         // 总黑屏时间2秒（音乐在第1秒开始）
-      const LOVE_HOLD_DURATION = 2.0;     // 「爱」字定格2秒
-      const SPAWN_DURATION = 8.0;         // 文字蔓延8秒
-      const FAULT_DURATION = 2.0;         // 故障2秒
+      const INITIAL_BLACK_DURATION = 2;     // 点击后黑屏2秒
+      const LOVE_HOLD_DURATION = 2;         // 「爱」字定格2秒
+      const SPAWN_DURATION = 8;              // 文字蔓延8秒（匀速增加至100个）
+      const FAULT_DURATION = 3.5;            // 故障3.5秒
       
       const canvas = document.getElementById('wordCanvas');
       const ctx = canvas.getContext('2d');
@@ -172,7 +163,9 @@
 
       let wordsArray = [];
       let animationFrameId = null;
-      let phase = 'waiting_start';  // waiting_start -> black -> loveHold -> spawning -> fault -> waitingHeart -> final
+      let startTime = null;
+      let phase = 'idle';
+      let faultStartTime = 0;
       let heartVisible = false;
       let finalShown = false;
 
@@ -182,6 +175,7 @@
       let glitchIntensity = 0;
 
       let heartX = 0, heartY = 0;
+      let spawnStartTime = 0;
       
       const TARGET_WORD_COUNT = 100;
       const MIN_FONT_SIZE = 18;
@@ -392,50 +386,34 @@
         }
       }
       
-      // 匀速增加文字数量
-      function getTargetWordCount(progress) {
-        if (progress <= 0) return 1;
-        const count = 1 + Math.floor((TARGET_WORD_COUNT - 1) * Math.min(progress, 1.0));
+      function getTargetWordCount(spawnElapsed) {
+        if (spawnElapsed <= 0) return 1;
+        const progress = Math.min(spawnElapsed / SPAWN_DURATION, 1.0);
+        const count = 1 + Math.floor((TARGET_WORD_COUNT - 1) * progress);
         return Math.min(count, TARGET_WORD_COUNT);
       }
       
-      // 基于绝对时间的主循环
-      function animationLoop(now) {
-        if (!gameSequenceStarted) {
-          animationFrameId = requestAnimationFrame(animationLoop);
-          return;
-        }
-        
-        // 根据当前绝对时间判断阶段
+      function animationLoop(timestamp) {
+        if (!startTime) startTime = timestamp;
+        const totalElapsed = (timestamp - startTime) / 1000;
+
         if (phase === 'black') {
-          if (now >= blackScreenEndTime) {
+          if (totalElapsed >= INITIAL_BLACK_DURATION) {
             phase = 'loveHold';
             wordsArray.push(createWord("爱", w/2, h/2, 20));
+            startTime = timestamp;
           }
         }
         else if (phase === 'loveHold') {
-          if (now >= loveHoldEndTime) {
+          if (totalElapsed >= LOVE_HOLD_DURATION) {
             phase = 'spawning';
+            spawnStartTime = timestamp;
           }
         }
         else if (phase === 'spawning') {
-          if (now >= spawnEndTime) {
-            // 蔓延结束，确保达到100个
-            while (wordsArray.length < TARGET_WORD_COUNT) {
-              const wordText = WORDS[Math.floor(Math.random() * WORDS.length)];
-              const fontSize = rand(MIN_FONT_SIZE, MAX_FONT_SIZE);
-              const pos = getRandomPosition(fontSize);
-              wordsArray.push(createWord(wordText, pos.x, pos.y, fontSize));
-            }
-            phase = 'fault';
-            isFaultPhase = true;
-            glitchIntensity = 0.6;
-            lastGlitchSwitch = performance.now();
-            applyGlitchToWords(glitchIntensity);
-          } else {
-            // 计算蔓延进度
-            const progress = (now - loveHoldEndTime) / SPAWN_DURATION;
-            const targetCount = getTargetWordCount(progress);
+          const spawnElapsed = (timestamp - spawnStartTime) / 1000;
+          if (spawnElapsed < SPAWN_DURATION) {
+            const targetCount = getTargetWordCount(spawnElapsed);
             while (wordsArray.length < targetCount) {
               const wordText = WORDS[Math.floor(Math.random() * WORDS.length)];
               const fontSize = rand(MIN_FONT_SIZE, MAX_FONT_SIZE);
@@ -444,10 +422,34 @@
             }
             isFaultPhase = false;
             clearAllGlitch();
+          } else {
+            while (wordsArray.length < TARGET_WORD_COUNT) {
+              const wordText = WORDS[Math.floor(Math.random() * WORDS.length)];
+              const fontSize = rand(MIN_FONT_SIZE, MAX_FONT_SIZE);
+              const pos = getRandomPosition(fontSize);
+              wordsArray.push(createWord(wordText, pos.x, pos.y, fontSize));
+            }
+            phase = 'fault';
+            faultStartTime = timestamp;
+            isFaultPhase = true;
+            glitchIntensity = 0.6;
+            lastGlitchSwitch = timestamp;
+            applyGlitchToWords(glitchIntensity);
           }
         }
         else if (phase === 'fault') {
-          if (now >= faultEndTime) {
+          const faultElapsed = (timestamp - faultStartTime) / 1000;
+          if (faultElapsed < FAULT_DURATION) {
+            if (timestamp - lastGlitchSwitch > rand(60, 180)) {
+              lastGlitchSwitch = timestamp;
+              glitchIntensity = rand(0.7, 1.0);
+              applyGlitchToWords(glitchIntensity);
+            }
+            if (Math.random() < 0.1) {
+              glitchIntensity = rand(0.6, 0.95);
+              applyGlitchToWords(glitchIntensity);
+            }
+          } else {
             forceFullGlitch();
             if (!heartVisible) {
               heartX = w / 2;
@@ -459,17 +461,6 @@
               phase = 'waitingHeart';
               isFaultPhase = true;
             }
-          } else {
-            // 故障期间随机glitch
-            if (now - lastGlitchSwitch > rand(60, 180)) {
-              lastGlitchSwitch = now;
-              glitchIntensity = rand(0.7, 1.0);
-              applyGlitchToWords(glitchIntensity);
-            }
-            if (Math.random() < 0.1) {
-              glitchIntensity = rand(0.6, 0.95);
-              applyGlitchToWords(glitchIntensity);
-            }
           }
         }
         else if (phase === 'waitingHeart') {
@@ -478,31 +469,9 @@
         
         drawScene();
 
-        if (!finalShown) {
+        if (!finalShown && phase !== 'idle') {
           animationFrameId = requestAnimationFrame(animationLoop);
         }
-      }
-      
-      // 开始游戏序列（基于音乐开始时间）
-      function startGameSequence(musicStartTimestamp) {
-        if (gameSequenceStarted) return;
-        gameSequenceStarted = true;
-        
-        const now = musicStartTimestamp;
-        
-        // 音乐已经在第1秒开始时播放
-        // 黑屏结束时间 = 音乐开始时间 + (黑屏总时间 - 音乐开始延迟)
-        // 音乐开始延迟是1秒，黑屏总时间2秒，所以音乐开始后还需要再黑屏1秒
-        blackScreenEndTime = now + (BLACK_DURATION - MUSIC_START_DELAY);
-        loveHoldEndTime = blackScreenEndTime + LOVE_HOLD_DURATION;
-        spawnEndTime = loveHoldEndTime + SPAWN_DURATION;
-        faultEndTime = spawnEndTime + FAULT_DURATION;
-        
-        phase = 'black';
-        
-        // 启动动画循环
-        if (animationFrameId) cancelAnimationFrame(animationFrameId);
-        animationFrameId = requestAnimationFrame(animationLoop);
       }
 
       function resizeCanvas() {
@@ -517,41 +486,14 @@
         else if (!finalShown && wordsArray.length) drawScene();
       }
 
-      function initAudio() { 
-        if (!bgmAudio) { 
-          bgmAudio = new Audio(BGM_URL); 
-          bgmAudio.loop = true; 
-          bgmAudio.volume = 0.68; 
-          bgmAudio.preload = "auto"; 
-        } 
-      }
+      function initAudio() { if (!bgmAudio) { bgmAudio = new Audio(BGM_URL); bgmAudio.loop = true; bgmAudio.volume = 0.68; bgmAudio.preload = "auto"; } }
+      function startMusic() { if (!bgmAudio) initAudio(); if (!audioPlaying) { bgmAudio.play().then(()=>audioPlaying=true).catch(e=>console.warn); } }
       
-      // 播放音乐并在第1秒时记录开始时间
-      function startMusicWithDelay(clickTimestamp) {
-        if (!bgmAudio) initAudio();
-        if (audioPlaying) return;
-        
-        // 计算距离点击后第1秒还需要等待多久
-        const elapsed = (performance.now() - clickTimestamp) / 1000;
-        const delayNeeded = Math.max(0, MUSIC_START_DELAY - elapsed);
-        
-        setTimeout(() => {
-          bgmAudio.play().then(() => {
-            audioPlaying = true;
-            // 记录音乐实际开始播放的精确时间
-            musicStartTime = performance.now();
-            startGameSequence(musicStartTime);
-          }).catch(e => console.warn("音乐播放失败", e));
-        }, delayNeeded * 1000);
-      }
-      
-      function startGame(e) {
+      function startGame() {
         if (gameStarted) return;
         gameStarted = true;
+        startMusic();
         
-        const clickTimestamp = performance.now();
-        
-        // 淡出点击层
         if (startLayer) { 
           startLayer.classList.add('fade-out'); 
           setTimeout(()=>{ if(startLayer?.parentNode) startLayer.parentNode.removeChild(startLayer); },400); 
@@ -561,21 +503,21 @@
         ctx.fillStyle = 'black';
         ctx.fillRect(0, 0, w, h);
         wordsArray = [];
-        phase = 'waiting_start';
+        phase = 'black';
         isFaultPhase = false;
         heartVisible = false;
         finalShown = false;
+        startTime = null;
         heartElement.classList.remove('show-heart');
-        
-        // 启动音乐（会在第1秒时开始播放并触发序列）
-        startMusicWithDelay(clickTimestamp);
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        animationFrameId = requestAnimationFrame(animationLoop);
       }
 
       function bindStartEvent() { 
         const sd = document.getElementById('startLayer'); 
         if(sd) sd.addEventListener('click', (e) => { 
           e.stopPropagation(); 
-          if(!gameStarted) startGame(e); 
+          if(!gameStarted) startGame(); 
         }); 
       }
       
