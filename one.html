@@ -156,10 +156,6 @@
         .option:focus {
             color: #888;
         }
-
-        .fade-transition {
-            transition: opacity 0.4s ease;
-        }
     </style>
 </head>
 <body>
@@ -197,7 +193,6 @@
         
         let typeInterval = null;
         let holdTimeout = null;
-        let glitchTimeout = null;
         let currentText = '';
         let fullTargetText = '';
         
@@ -208,46 +203,13 @@
         const BLACK_SCREEN_DURATION = 2000;
         
         let noChoiceCount = 0;
-        let audioUnlocked = false;  // 标记音频是否已解锁
         
         // 音频相关
-        let audioContext = null;
-        let tinnitusGain = null;
-        let tinnitusOsc = null;
-        let isTinnitusPlaying = false;
         let externalAudio = null;
-        
         const EXTERNAL_AUDIO_URL = 'https://cdn.jsdelivr.net/gh/femi67684-web/audio-files/5hhfrd.mp3';
         
-        function initAudio() {
-            if (audioContext) return;
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        }
-        
-        // ⭐ 关键修复：解锁音频播放权限
-        function unlockAudio() {
-            if (audioUnlocked) return;
-            
-            // 方法1：用 AudioContext 解锁
-            if (audioContext && audioContext.state === 'suspended') {
-                audioContext.resume();
-            }
-            
-            // 方法2：用一个静音的 Audio 元素播放并立即暂停，激活权限
-            const silentAudio = new Audio();
-            silentAudio.volume = 0;
-            silentAudio.play().then(() => {
-                silentAudio.pause();
-                console.log('音频权限已激活');
-            }).catch(() => {});
-            
-            audioUnlocked = true;
-        }
-        
-        // 播放外部音频
+        // 播放音频
         function playExternalAudio() {
-            unlockAudio();  // 确保权限已激活
-            
             if (!externalAudio) {
                 externalAudio = new Audio(EXTERNAL_AUDIO_URL);
                 externalAudio.volume = 0.8;
@@ -257,6 +219,7 @@
             externalAudio.play().catch(e => console.log('音频播放失败:', e));
         }
         
+        // 停止音频
         function stopExternalAudio() {
             if (externalAudio) {
                 externalAudio.pause();
@@ -264,58 +227,7 @@
             }
         }
         
-        function startTinnitus() {
-            unlockAudio();  // 确保权限已激活
-            
-            if (!audioContext || audioContext.state !== 'running') {
-                if (audioContext) audioContext.resume();
-                return;
-            }
-            if (isTinnitusPlaying) return;
-            
-            isTinnitusPlaying = true;
-            
-            tinnitusOsc = audioContext.createOscillator();
-            tinnitusOsc.type = 'sine';
-            tinnitusOsc.frequency.value = 13800;
-            
-            const lfo = audioContext.createOscillator();
-            lfo.type = 'sine';
-            lfo.frequency.value = 4;
-            const lfoGain = audioContext.createGain();
-            lfoGain.gain.value = 200;
-            lfo.connect(lfoGain);
-            lfoGain.connect(tinnitusOsc.frequency);
-            
-            tinnitusGain = audioContext.createGain();
-            tinnitusGain.gain.value = 0.12;
-            
-            tinnitusOsc.connect(tinnitusGain);
-            tinnitusGain.connect(audioContext.destination);
-            
-            lfo.start();
-            tinnitusOsc.start();
-            
-            tinnitusOsc._lfo = lfo;
-        }
-        
-        function fadeOutTinnitus(duration = 1.5) {
-            if (!tinnitusGain || !isTinnitusPlaying) return;
-            const now = audioContext.currentTime;
-            tinnitusGain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
-            setTimeout(() => {
-                if (tinnitusOsc) {
-                    try {
-                        tinnitusOsc.stop();
-                        if (tinnitusOsc._lfo) tinnitusOsc._lfo.stop();
-                    } catch(e) {}
-                    tinnitusOsc = null;
-                    tinnitusGain = null;
-                    isTinnitusPlaying = false;
-                }
-            }, duration * 1000);
-        }
-        
+        // 屏幕震动 + 红白闪烁
         function doIntenseFlash(onComplete) {
             const body = document.body;
             const originalBg = body.style.backgroundColor;
@@ -350,7 +262,6 @@
         function clearAllTimers() {
             if (typeInterval) { clearInterval(typeInterval); typeInterval = null; }
             if (holdTimeout) { clearTimeout(holdTimeout); holdTimeout = null; }
-            if (glitchTimeout) { clearTimeout(glitchTimeout); glitchTimeout = null; }
         }
         
         function updateDisplay() {
@@ -529,13 +440,8 @@
         
         function handleConfirm() {
             startDeleting(() => {
-                initAudio();
-                unlockAudio();  // 确保权限已激活
-                
-                // 播放音频
+                // 第一次闪屏：播放音频 + 闪屏震动
                 playExternalAudio();
-                startTinnitus();
-                
                 doIntenseFlash(() => {
                     displaySpan.style.color = '#8B0000';
                     startTyping('不乖', () => {
@@ -553,7 +459,7 @@
                                                     handleYes();
                                                 }
                                             });
-                                            fadeOutTinnitus(1.5);
+                                            // 音频停止（可选，也可以让它自然结束）
                                             stopExternalAudio();
                                         });
                                     }, 1000);
@@ -641,10 +547,8 @@
             }, 400);
         }
         
-        // ⭐ 用户点击“游玩须知”时，同时激活音频权限
+        // 用户点击“游玩须知”时进入游戏
         noticeContainer.addEventListener('click', () => {
-            initAudio();
-            unlockAudio();      // 激活音频权限
             transitionToGame();
         });
     })();
