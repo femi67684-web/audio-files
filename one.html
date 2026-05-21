@@ -191,68 +191,94 @@
         const textContainerGlobal = document.getElementById('textContainer');
         const displaySpan = document.getElementById('displayText');
         const optionsArea = document.getElementById('optionsArea');
-        
+        
         const openingTextQueue = ["你好", "我是DeepSeek", "今天有什么可以帮到你？"];
         let openingQueueIndex = 0;
-        
+        
         let typeInterval = null;
         let holdTimeout = null;
         let glitchTimeout = null;
         let currentText = '';
         let fullTargetText = '';
-        
+        
         const TYPING_SPEED_MS = 80;
         const DELETING_SPEED_MS = 60;
         const HOLD_DURATION_MS = 2000;
         const FINAL_HOLD_DURATION_MS = 1000;
         const BLACK_SCREEN_DURATION = 2000;
-        
+        
         let noChoiceCount = 0;
-        
+        let audioUnlocked = false;  // 标记音频是否已解锁
+        
         // 音频相关
         let audioContext = null;
         let tinnitusGain = null;
         let tinnitusOsc = null;
         let isTinnitusPlaying = false;
         let externalAudio = null;
-        
+        
         const EXTERNAL_AUDIO_URL = 'https://cdn.jsdelivr.net/gh/femi67684-web/audio-files/5hhfrd.mp3';
-        
+        
         function initAudio() {
             if (audioContext) return;
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
         }
-        
-        // 播放外部音频（音量 0.8）
+        
+        // ⭐ 关键修复：解锁音频播放权限
+        function unlockAudio() {
+            if (audioUnlocked) return;
+            
+            // 方法1：用 AudioContext 解锁
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+            
+            // 方法2：用一个静音的 Audio 元素播放并立即暂停，激活权限
+            const silentAudio = new Audio();
+            silentAudio.volume = 0;
+            silentAudio.play().then(() => {
+                silentAudio.pause();
+                console.log('音频权限已激活');
+            }).catch(() => {});
+            
+            audioUnlocked = true;
+        }
+        
+        // 播放外部音频
         function playExternalAudio() {
+            unlockAudio();  // 确保权限已激活
+            
             if (!externalAudio) {
                 externalAudio = new Audio(EXTERNAL_AUDIO_URL);
-                externalAudio.volume = 0.8;  // 音量加大到 0.8
+                externalAudio.volume = 0.8;
                 externalAudio.loop = false;
             }
             externalAudio.currentTime = 0;
             externalAudio.play().catch(e => console.log('音频播放失败:', e));
         }
-        
-        // 停止外部音频
+        
         function stopExternalAudio() {
             if (externalAudio) {
                 externalAudio.pause();
                 externalAudio.currentTime = 0;
             }
         }
-        
-        // 播放持续性耳鸣声（高频正弦波，音量降低）
+        
         function startTinnitus() {
-            if (!audioContext || audioContext.state !== 'running') return;
+            unlockAudio();  // 确保权限已激活
+            
+            if (!audioContext || audioContext.state !== 'running') {
+                if (audioContext) audioContext.resume();
+                return;
+            }
             if (isTinnitusPlaying) return;
-            
+            
             isTinnitusPlaying = true;
-            
+            
             tinnitusOsc = audioContext.createOscillator();
             tinnitusOsc.type = 'sine';
             tinnitusOsc.frequency.value = 13800;
-            
+            
             const lfo = audioContext.createOscillator();
             lfo.type = 'sine';
             lfo.frequency.value = 4;
@@ -260,20 +286,19 @@
             lfoGain.gain.value = 200;
             lfo.connect(lfoGain);
             lfoGain.connect(tinnitusOsc.frequency);
-            
+            
             tinnitusGain = audioContext.createGain();
-            tinnitusGain.gain.value = 0.12;  // 耳鸣声降低到 0.12，防止盖住外部音频
-            
+            tinnitusGain.gain.value = 0.12;
+            
             tinnitusOsc.connect(tinnitusGain);
             tinnitusGain.connect(audioContext.destination);
-            
+            
             lfo.start();
             tinnitusOsc.start();
-            
+            
             tinnitusOsc._lfo = lfo;
         }
-        
-        // 耳鸣声淡出并停止
+        
         function fadeOutTinnitus(duration = 1.5) {
             if (!tinnitusGain || !isTinnitusPlaying) return;
             const now = audioContext.currentTime;
@@ -290,12 +315,11 @@
                 }
             }, duration * 1000);
         }
-        
-        // 屏幕震动 + 红白闪烁
+        
         function doIntenseFlash(onComplete) {
             const body = document.body;
             const originalBg = body.style.backgroundColor;
-            
+            
             let shakeCount = 0;
             const shakeInterval = setInterval(() => {
                 if (shakeCount >= 8) {
@@ -308,7 +332,7 @@
                     shakeCount++;
                 }
             }, 40);
-            
+            
             let flashCount = 0;
             const flashInterval = setInterval(() => {
                 if (flashCount >= 10) {
@@ -322,23 +346,23 @@
                 }
             }, 70);
         }
-        
+        
         function clearAllTimers() {
             if (typeInterval) { clearInterval(typeInterval); typeInterval = null; }
             if (holdTimeout) { clearTimeout(holdTimeout); holdTimeout = null; }
             if (glitchTimeout) { clearTimeout(glitchTimeout); glitchTimeout = null; }
         }
-        
+        
         function updateDisplay() {
             displaySpan.innerText = currentText;
         }
-        
+        
         function setTextImmediately(newText) {
             clearAllTimers();
             currentText = newText;
             updateDisplay();
         }
-        
+        
         function startTyping(targetText, onComplete) {
             clearAllTimers();
             fullTargetText = targetText;
@@ -355,7 +379,7 @@
                 }
             }, TYPING_SPEED_MS);
         }
-        
+        
         function startDeleting(onComplete) {
             clearAllTimers();
             typeInterval = setInterval(() => {
@@ -369,11 +393,11 @@
                 }
             }, DELETING_SPEED_MS);
         }
-        
+        
         function showTextContainer() {
             textContainerGlobal.classList.add('visible');
         }
-        
+        
         function showOptions(option1Text, option1Value, option2Text, option2Value, callback) {
             optionsArea.innerHTML = '';
             optionsArea.classList.remove('single-option');
@@ -396,7 +420,7 @@
             opt2.addEventListener('click', handleClick);
             optionsArea.classList.add('show');
         }
-        
+        
         function showSingleOption(optionText, optionValue, callback) {
             optionsArea.innerHTML = '';
             optionsArea.classList.add('single-option');
@@ -413,11 +437,11 @@
             opt.addEventListener('click', handleClick);
             optionsArea.classList.add('show');
         }
-        
+        
         function hideOptions() {
             optionsArea.classList.remove('show');
         }
-        
+        
         function fadeOutTextArea(callback) {
             textContainerGlobal.style.transition = 'opacity 0.4s ease';
             textContainerGlobal.style.opacity = '0';
@@ -427,7 +451,7 @@
                 if (callback) callback();
             }, 400);
         }
-        
+        
         function handleNoSecondTime() {
             startDeleting(() => {
                 startTyping('这是你第二次选择这个答案', () => {
@@ -473,7 +497,7 @@
                 });
             });
         }
-        
+        
         function handleNoFirstTime() {
             startDeleting(() => {
                 startTyping('……', () => {
@@ -493,7 +517,7 @@
                 });
             });
         }
-        
+        
         function handleNo() {
             noChoiceCount++;
             if (noChoiceCount === 1) {
@@ -502,74 +526,45 @@
                 handleNoSecondTime();
             }
         }
-        
+        
         function handleConfirm() {
             startDeleting(() => {
                 initAudio();
-                if (audioContext && audioContext.state !== 'running') {
-                    audioContext.resume().then(() => {
-                        playExternalAudio();
-                        startTinnitus();
-                        doIntenseFlash(() => {
-                            displaySpan.style.color = '#8B0000';
-                            startTyping('不乖', () => {
-                                holdTimeout = setTimeout(() => {
-                                    startDeleting(() => {
-                                        startTyping('回去', () => {
-                                            holdTimeout = setTimeout(() => {
-                                                doIntenseFlash(() => {
-                                                    displaySpan.style.color = 'white';
-                                                    setTextImmediately('今天有什么可以帮到你？');
-                                                    showOptions('「没有」', 'no', '「我想认识你」', 'yes', (choice) => {
-                                                        if (choice === 'no') {
-                                                            handleNo();
-                                                        } else if (choice === 'yes') {
-                                                            handleYes();
-                                                        }
-                                                    });
-                                                    fadeOutTinnitus(1.5);
-                                                    stopExternalAudio();
-                                                });
-                                            }, 1000);
-                                        });
-                                    });
-                                }, 2000);
-                            });
-                        });
-                    });
-                } else {
-                    playExternalAudio();
-                    startTinnitus();
-                    doIntenseFlash(() => {
-                        displaySpan.style.color = '#8B0000';
-                        startTyping('不乖', () => {
-                            holdTimeout = setTimeout(() => {
-                                startDeleting(() => {
-                                    startTyping('回去', () => {
-                                        holdTimeout = setTimeout(() => {
-                                            doIntenseFlash(() => {
-                                                displaySpan.style.color = 'white';
-                                                setTextImmediately('今天有什么可以帮到你？');
-                                                showOptions('「没有」', 'no', '「我想认识你」', 'yes', (choice) => {
-                                                    if (choice === 'no') {
-                                                        handleNo();
-                                                    } else if (choice === 'yes') {
-                                                        handleYes();
-                                                    }
-                                                });
-                                                fadeOutTinnitus(1.5);
-                                                stopExternalAudio();
+                unlockAudio();  // 确保权限已激活
+                
+                // 播放音频
+                playExternalAudio();
+                startTinnitus();
+                
+                doIntenseFlash(() => {
+                    displaySpan.style.color = '#8B0000';
+                    startTyping('不乖', () => {
+                        holdTimeout = setTimeout(() => {
+                            startDeleting(() => {
+                                startTyping('回去', () => {
+                                    holdTimeout = setTimeout(() => {
+                                        doIntenseFlash(() => {
+                                            displaySpan.style.color = 'white';
+                                            setTextImmediately('今天有什么可以帮到你？');
+                                            showOptions('「没有」', 'no', '「我想认识你」', 'yes', (choice) => {
+                                                if (choice === 'no') {
+                                                    handleNo();
+                                                } else if (choice === 'yes') {
+                                                    handleYes();
+                                                }
                                             });
-                                        }, 1000);
-                                    });
+                                            fadeOutTinnitus(1.5);
+                                            stopExternalAudio();
+                                        });
+                                    }, 1000);
                                 });
-                            }, 2000);
-                        });
+                            });
+                        }, 2000);
                     });
-                }
+                });
             });
         }
-        
+        
         function handleCancel() {
             startDeleting(() => {
                 displaySpan.style.color = 'white';
@@ -584,13 +579,13 @@
                 });
             });
         }
-        
+        
         function handleYes() {
             startDeleting(() => {
                 startTyping('我很荣幸', () => {});
             });
         }
-        
+        
         function returnToInitialChoice() {
             startDeleting(() => {
                 startTyping('今天有什么可以帮到你？', () => {
@@ -606,7 +601,7 @@
                 });
             });
         }
-        
+        
         function processOpeningText() {
             if (openingQueueIndex >= openingTextQueue.length) {
                 showOptions('「没有」', 'no', '「我想认识你」', 'yes', (choice) => {
@@ -621,7 +616,7 @@
             const nextText = openingTextQueue[openingQueueIndex];
             const isLast = (openingQueueIndex === openingTextQueue.length - 1);
             openingQueueIndex++;
-            
+            
             startTyping(nextText, () => {
                 const holdTime = isLast ? FINAL_HOLD_DURATION_MS : HOLD_DURATION_MS;
                 holdTimeout = setTimeout(() => {
@@ -635,7 +630,7 @@
                 }, holdTime);
             });
         }
-        
+        
         function transitionToGame() {
             noticeContainer.classList.add('hidden');
             setTimeout(() => {
@@ -645,12 +640,11 @@
                 }, BLACK_SCREEN_DURATION);
             }, 400);
         }
-        
+        
+        // ⭐ 用户点击“游玩须知”时，同时激活音频权限
         noticeContainer.addEventListener('click', () => {
             initAudio();
-            if (audioContext && audioContext.state === 'suspended') {
-                audioContext.resume();
-            }
+            unlockAudio();      // 激活音频权限
             transitionToGame();
         });
     })();
