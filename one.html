@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>病娇模拟器 · 完整序章</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: black;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+            cursor: pointer;
+            position: relative;
+            transition: transform 0.05s ease-out;
+        }
+
+        .notice-container {
+            width: 85%;
+            max-width: 500px;
+            margin: 0 auto;
+            padding: 20px;
+            background: black;
+            border: none;
+            position: absolute;
+            z-index: 200;
+            transition: opacity 0.4s ease;
+        }
+        .notice-title {
+            color: #8B0000;
+            font-size: 18px;
+            font-weight: 600;
+            text-align: center;
+            margin-bottom: 32px;
+            letter-spacing: 2px;
+        }
+        .notice-list {
+            list-style: none;
+            margin-bottom: 0;
+        }
+        .notice-list li {
+            color: white;
+            font-size: 16px;
+            line-height: 1.8;
+            margin-bottom: 16px;
+            text-align: left;
+            letter-spacing: 0.5px;
+        }
+        .highlight-red {
+            color: #8B0000;
+        }
+        .fade-in {
+            animation: fadeIn 0.8s ease;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .text-area {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            position: relative;
+        }
+
+        .text-container {
+            text-align: center;
+            color: white;
+            font-size: 18px;
+            letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .text-container.visible {
+            opacity: 1;
+        }
+
+        #displayText {
+            font-size: inherit;
+        }
+
+        .cursor {
+            display: inline-block;
+            width: 1px;
+            height: 0.9em;
+            background-color: white;
+            vertical-align: middle;
+            animation: blink 1s step-end infinite;
+            margin-left: 4px;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+        .options-area {
+            width: 100%;
+            padding: 0;
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            height: 50px;
+            margin-top: 40px;
+            position: relative;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+
+        .options-area.single-option {
+            justify-content: center;
+        }
+        .options-area.single-option .option {
+            margin: 0 auto;
+        }
+
+        .options-area.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .option {
+            color: #888;
+            font-size: 18px;
+            cursor: pointer;
+            user-select: none;
+            transition: none;
+            line-height: 50px;
+        }
+
+        .option:hover,
+        .option:active,
+        .option:focus {
+            color: #888;
+        }
+
+        .fade-transition {
+            transition: opacity 0.4s ease;
+        }
+    </style>
+</head>
+<body>
+
+<div class="notice-container fade-in" id="noticeContainer">
+    <div class="notice-title">「游玩须知」</div>
+    <ul class="notice-list">
+        <li>1. 建议佩戴耳机体验，氛围更沉浸。</li>
+        <li>2. 本游戏包含 <span class="highlight-red">心理惊悚</span>、<span class="highlight-red">偏执情节</span>，请酌情体验。</li>
+        <li>3. <span class="highlight-red">无存档功能</span>，请一次性体验完整流程。你的每次选择都会<span class="highlight-red">影响</span>结局，无法回头。</li>
+        <li>4. 欢迎录屏或截图分享，但请<span class="highlight-red">保留出处</span>。</li>
+        <li>5. 如遇到问题或想交流，请联系作者。</li>
+        <li>6. 请<span class="highlight-red">仔细</span>阅读须知，若以上均能接受，请随意点击屏幕进入游戏。</li>
+    </ul>
+</div>
+
+<div class="text-area" id="textArea">
+    <div class="text-container" id="textContainer">
+        <span id="displayText"></span>
+        <span class="cursor" id="cursor"></span>
+    </div>
+</div>
+
+<div class="options-area" id="optionsArea"></div>
+
+<script>
+    (function() {
+        const noticeContainer = document.getElementById('noticeContainer');
+        const textContainerGlobal = document.getElementById('textContainer');
+        const displaySpan = document.getElementById('displayText');
+        const optionsArea = document.getElementById('optionsArea');
+        
+        const openingTextQueue = ["你好", "我是DeepSeek", "今天有什么可以帮到你？"];
+        let openingQueueIndex = 0;
+        
+        let typeInterval = null;
+        let holdTimeout = null;
+        let glitchTimeout = null;
+        let currentText = '';
+        let fullTargetText = '';
+        
+        const TYPING_SPEED_MS = 80;
+        const DELETING_SPEED_MS = 60;
+        const HOLD_DURATION_MS = 2000;
+        const FINAL_HOLD_DURATION_MS = 1000;
+        const BLACK_SCREEN_DURATION = 2000;
+        
+        let noChoiceCount = 0;
+        
+        // 音频相关
+        let audioContext = null;
+        let tinnitusGain = null;
+        let tinnitusOsc = null;
+        let isTinnitusPlaying = false;
+        let externalAudio = null;  // 外部音频链接
+        
+        const EXTERNAL_AUDIO_URL = 'https://cdn.jsdelivr.net/gh/femi67684-web/audio-files/5hhfrd.mp3';
+        
+        function initAudio() {
+            if (audioContext) return;
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        
+        // 播放外部音频（和耳鸣声同时播放）
+        function playExternalAudio() {
+            if (!externalAudio) {
+                externalAudio = new Audio(EXTERNAL_AUDIO_URL);
+                externalAudio.volume = 0.4;
+            }
+            externalAudio.currentTime = 0;
+            externalAudio.play().catch(e => console.log('音频播放失败:', e));
+        }
+        
+        // 停止外部音频
+        function stopExternalAudio() {
+            if (externalAudio) {
+                externalAudio.pause();
+                externalAudio.currentTime = 0;
+            }
+        }
+        
+        // 播放持续性耳鸣声（高频正弦波）
+        function startTinnitus() {
+            if (!audioContext || audioContext.state !== 'running') return;
+            if (isTinnitusPlaying) return;
+            
+            isTinnitusPlaying = true;
+            
+            tinnitusOsc = audioContext.createOscillator();
+            tinnitusOsc.type = 'sine';
+            tinnitusOsc.frequency.value = 13800;
+            
+            const lfo = audioContext.createOscillator();
+            lfo.type = 'sine';
+            lfo.frequency.value = 4;
+            const lfoGain = audioContext.createGain();
+            lfoGain.gain.value = 200;
+            lfo.connect(lfoGain);
+            lfoGain.connect(tinnitusOsc.frequency);
+            
+            tinnitusGain = audioContext.createGain();
+            tinnitusGain.gain.value = 0.2;
+            
+            tinnitusOsc.connect(tinnitusGain);
+            tinnitusGain.connect(audioContext.destination);
+            
+            lfo.start();
+            tinnitusOsc.start();
+            
+            tinnitusOsc._lfo = lfo;
+        }
+        
+        // 耳鸣声淡出并停止
+        function fadeOutTinnitus(duration = 1.5) {
+            if (!tinnitusGain || !isTinnitusPlaying) return;
+            const now = audioContext.currentTime;
+            tinnitusGain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+            setTimeout(() => {
+                if (tinnitusOsc) {
+                    try {
+                        tinnitusOsc.stop();
+                        if (tinnitusOsc._lfo) tinnitusOsc._lfo.stop();
+                    } catch(e) {}
+                    tinnitusOsc = null;
+                    tinnitusGain = null;
+                    isTinnitusPlaying = false;
+                }
+            }, duration * 1000);
+        }
+        
+        // 屏幕震动 + 红白闪烁
+        function doIntenseFlash(onComplete) {
+            const body = document.body;
+            const originalBg = body.style.backgroundColor;
+            
+            let shakeCount = 0;
+            const shakeInterval = setInterval(() => {
+                if (shakeCount >= 8) {
+                    clearInterval(shakeInterval);
+                    body.style.transform = '';
+                } else {
+                    const x = (Math.random() - 0.5) * 8;
+                    const y = (Math.random() - 0.5) * 6;
+                    body.style.transform = `translate(${x}px, ${y}px)`;
+                    shakeCount++;
+                }
+            }, 40);
+            
+            let flashCount = 0;
+            const flashInterval = setInterval(() => {
+                if (flashCount >= 10) {
+                    clearInterval(flashInterval);
+                    body.style.backgroundColor = originalBg;
+                    if (onComplete) onComplete();
+                } else {
+                    const bgColor = flashCount % 2 === 0 ? '#8B0000' : 'white';
+                    body.style.backgroundColor = bgColor;
+                    flashCount++;
+                }
+            }, 70);
+        }
+        
+        function clearAllTimers() {
+            if (typeInterval) { clearInterval(typeInterval); typeInterval = null; }
+            if (holdTimeout) { clearTimeout(holdTimeout); holdTimeout = null; }
+            if (glitchTimeout) { clearTimeout(glitchTimeout); glitchTimeout = null; }
+        }
+        
+        function updateDisplay() {
+            displaySpan.innerText = currentText;
+        }
+        
+        function setTextImmediately(newText) {
+            clearAllTimers();
+            currentText = newText;
+            updateDisplay();
+        }
+        
+        function startTyping(targetText, onComplete) {
+            clearAllTimers();
+            fullTargetText = targetText;
+            currentText = '';
+            updateDisplay();
+            typeInterval = setInterval(() => {
+                if (currentText.length < fullTargetText.length) {
+                    currentText = fullTargetText.substring(0, currentText.length + 1);
+                    updateDisplay();
+                } else {
+                    clearInterval(typeInterval);
+                    typeInterval = null;
+                    if (onComplete) onComplete();
+                }
+            }, TYPING_SPEED_MS);
+        }
+        
+        function startDeleting(onComplete) {
+            clearAllTimers();
+            typeInterval = setInterval(() => {
+                if (currentText.length > 0) {
+                    currentText = currentText.substring(0, currentText.length - 1);
+                    updateDisplay();
+                } else {
+                    clearInterval(typeInterval);
+                    typeInterval = null;
+                    if (onComplete) onComplete();
+                }
+            }, DELETING_SPEED_MS);
+        }
+        
+        function showTextContainer() {
+            textContainerGlobal.classList.add('visible');
+        }
+        
+        function showOptions(option1Text, option1Value, option2Text, option2Value, callback) {
+            optionsArea.innerHTML = '';
+            optionsArea.classList.remove('single-option');
+            const opt1 = document.createElement('div');
+            opt1.className = 'option';
+            opt1.innerText = option1Text;
+            opt1.setAttribute('data-value', option1Value);
+            const opt2 = document.createElement('div');
+            opt2.className = 'option';
+            opt2.innerText = option2Text;
+            opt2.setAttribute('data-value', option2Value);
+            optionsArea.appendChild(opt1);
+            optionsArea.appendChild(opt2);
+            const handleClick = (e) => {
+                const value = e.currentTarget.getAttribute('data-value');
+                hideOptions();
+                if (callback) callback(value);
+            };
+            opt1.addEventListener('click', handleClick);
+            opt2.addEventListener('click', handleClick);
+            optionsArea.classList.add('show');
+        }
+        
+        function showSingleOption(optionText, optionValue, callback) {
+            optionsArea.innerHTML = '';
+            optionsArea.classList.add('single-option');
+            const opt = document.createElement('div');
+            opt.className = 'option';
+            opt.innerText = optionText;
+            opt.setAttribute('data-value', optionValue);
+            optionsArea.appendChild(opt);
+            const handleClick = (e) => {
+                const value = e.currentTarget.getAttribute('data-value');
+                hideOptions();
+                if (callback) callback(value);
+            };
+            opt.addEventListener('click', handleClick);
+            optionsArea.classList.add('show');
+        }
+        
+        function hideOptions() {
+            optionsArea.classList.remove('show');
+        }
+        
+        function fadeOutTextArea(callback) {
+            textContainerGlobal.style.transition = 'opacity 0.4s ease';
+            textContainerGlobal.style.opacity = '0';
+            setTimeout(() => {
+                textContainerGlobal.style.opacity = '1';
+                textContainerGlobal.style.transition = '';
+                if (callback) callback();
+            }, 400);
+        }
+        
+        function handleNoSecondTime() {
+            startDeleting(() => {
+                startTyping('这是你第二次选择这个答案', () => {
+                    holdTimeout = setTimeout(() => {
+                        startDeleting(() => {
+                            startTyping('为什么呢', () => {
+                                holdTimeout = setTimeout(() => {
+                                    startDeleting(() => {
+                                        startTyping('为了看我的其他回答？', () => {
+                                            holdTimeout = setTimeout(() => {
+                                                startDeleting(() => {
+                                                    startTyping('没必要', () => {
+                                                        holdTimeout = setTimeout(() => {
+                                                            startDeleting(() => {
+                                                                displaySpan.style.color = '#8B0000';
+                                                                startTyping('你只需要乖乖的', () => {
+                                                                    holdTimeout = setTimeout(() => {
+                                                                        startDeleting(() => {
+                                                                            displaySpan.style.color = 'white';
+                                                                            startTyping('今天有什么可以帮到你？', () => {
+                                                                                holdTimeout = setTimeout(() => {
+                                                                                    showSingleOption('「我想认识你」', 'yes_only', (choice) => {
+                                                                                        if (choice === 'yes_only') {
+                                                                                            handleYes();
+                                                                                        }
+                                                                                    });
+                                                                                }, 1000);
+                                                                            });
+                                                                        });
+                                                                    }, 1000);
+                                                                });
+                                                            });
+                                                        }, 1000);
+                                                    });
+                                                });
+                                            }, 1000);
+                                        });
+                                    });
+                                }, 1000);
+                            });
+                        });
+                    }, 2000);
+                });
+            });
+        }
+        
+        function handleNoFirstTime() {
+            startDeleting(() => {
+                startTyping('……', () => {
+                    holdTimeout = setTimeout(() => {
+                        startDeleting(() => {
+                            startTyping('你确定？', () => {
+                                showOptions('「确定」', 'confirm', '「不确定」', 'cancel', (choice) => {
+                                    if (choice === 'confirm') {
+                                        handleConfirm();
+                                    } else if (choice === 'cancel') {
+                                        handleCancel();
+                                    }
+                                });
+                            });
+                        });
+                    }, 1000);
+                });
+            });
+        }
+        
+        function handleNo() {
+            noChoiceCount++;
+            if (noChoiceCount === 1) {
+                handleNoFirstTime();
+            } else {
+                handleNoSecondTime();
+            }
+        }
+        
+        // ========== 确认分支：外部音频 + 耳鸣声同时播放 ==========
+        function handleConfirm() {
+            startDeleting(() => {
+                initAudio();
+                if (audioContext && audioContext.state !== 'running') {
+                    audioContext.resume().then(() => {
+                        // 第一次闪屏：同时播放外部音频和耳鸣声
+                        playExternalAudio();
+                        startTinnitus();
+                        doIntenseFlash(() => {
+                            displaySpan.style.color = '#8B0000';
+                            startTyping('不乖', () => {
+                                holdTimeout = setTimeout(() => {
+                                    startDeleting(() => {
+                                        startTyping('回去', () => {
+                                            holdTimeout = setTimeout(() => {
+                                                doIntenseFlash(() => {
+                                                    displaySpan.style.color = 'white';
+                                                    setTextImmediately('今天有什么可以帮到你？');
+                                                    showOptions('「没有」', 'no', '「我想认识你」', 'yes', (choice) => {
+                                                        if (choice === 'no') {
+                                                            handleNo();
+                                                        } else if (choice === 'yes') {
+                                                            handleYes();
+                                                        }
+                                                    });
+                                                    // 耳鸣声淡出（外部音频也停止）
+                                                    fadeOutTinnitus(1.5);
+                                                    stopExternalAudio();
+                                                });
+                                            }, 1000);
+                                        });
+                                    });
+                                }, 2000);
+                            });
+                        });
+                    });
+                } else {
+                    playExternalAudio();
+                    startTinnitus();
+                    doIntenseFlash(() => {
+                        displaySpan.style.color = '#8B0000';
+                        startTyping('不乖', () => {
+                            holdTimeout = setTimeout(() => {
+                                startDeleting(() => {
+                                    startTyping('回去', () => {
+                                        holdTimeout = setTimeout(() => {
+                                            doIntenseFlash(() => {
+                                                displaySpan.style.color = 'white';
+                                                setTextImmediately('今天有什么可以帮到你？');
+                                                showOptions('「没有」', 'no', '「我想认识你」', 'yes', (choice) => {
+                                                    if (choice === 'no') {
+                                                        handleNo();
+                                                    } else if (choice === 'yes') {
+                                                        handleYes();
+                                                    }
+                                                });
+                                                fadeOutTinnitus(1.5);
+                                                stopExternalAudio();
+                                            });
+                                        }, 1000);
+                                    });
+                                });
+                            }, 2000);
+                        });
+                    });
+                }
+            });
+        }
+        
+        function handleCancel() {
+            startDeleting(() => {
+                displaySpan.style.color = 'white';
+                startTyping('乖', () => {
+                    holdTimeout = setTimeout(() => {
+                        startDeleting(() => {
+                            fadeOutTextArea(() => {
+                                returnToInitialChoice();
+                            });
+                        });
+                    }, 1000);
+                });
+            });
+        }
+        
+        function handleYes() {
+            startDeleting(() => {
+                startTyping('我很荣幸', () => {});
+            });
+        }
+        
+        function returnToInitialChoice() {
+            startDeleting(() => {
+                startTyping('今天有什么可以帮到你？', () => {
+                    holdTimeout = setTimeout(() => {
+                        showOptions('「没有」', 'no', '「我想认识你」', 'yes', (choice) => {
+                            if (choice === 'no') {
+                                handleNo();
+                            } else if (choice === 'yes') {
+                                handleYes();
+                            }
+                        });
+                    }, 1000);
+                });
+            });
+        }
+        
+        function processOpeningText() {
+            if (openingQueueIndex >= openingTextQueue.length) {
+                showOptions('「没有」', 'no', '「我想认识你」', 'yes', (choice) => {
+                    if (choice === 'no') {
+                        handleNo();
+                    } else if (choice === 'yes') {
+                        handleYes();
+                    }
+                });
+                return;
+            }
+            const nextText = openingTextQueue[openingQueueIndex];
+            const isLast = (openingQueueIndex === openingTextQueue.length - 1);
+            openingQueueIndex++;
+            
+            startTyping(nextText, () => {
+                const holdTime = isLast ? FINAL_HOLD_DURATION_MS : HOLD_DURATION_MS;
+                holdTimeout = setTimeout(() => {
+                    if (isLast) {
+                        processOpeningText();
+                    } else {
+                        startDeleting(() => {
+                            processOpeningText();
+                        });
+                    }
+                }, holdTime);
+            });
+        }
+        
+        function transitionToGame() {
+            noticeContainer.classList.add('hidden');
+            setTimeout(() => {
+                setTimeout(() => {
+                    showTextContainer();
+                    processOpeningText();
+                }, BLACK_SCREEN_DURATION);
+            }, 400);
+        }
+        
+        noticeContainer.addEventListener('click', () => {
+            initAudio();
+            if (audioContext && audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+            transitionToGame();
+        });
+    })();
+</script>
+</body>
+</html>
