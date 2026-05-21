@@ -185,18 +185,12 @@
 
 <div class="options-area" id="optionsArea"></div>
 
-<!-- 修复：闭合audio标签 + 调高音量 + 预加载 -->
-<audio id="flashAudio" preload="auto" volume="0.8" src="https://cdn.jsdelivr.net/gh/femi67684-web/audio-files/5hhfrd.mp3">
-
 <script>
     (function() {
         const noticeContainer = document.getElementById('noticeContainer');
         const textContainerGlobal = document.getElementById('textContainer');
         const displaySpan = document.getElementById('displayText');
         const optionsArea = document.getElementById('optionsArea');
-        const flashAudio = document.getElementById('flashAudio');
-        // 强制音量
-        flashAudio.volume = 0.8;
         
         const openingTextQueue = ["你好", "我是DeepSeek", "今天有什么可以帮到你？"];
         let openingQueueIndex = 0;
@@ -215,18 +209,40 @@
         
         let noChoiceCount = 0;
         
-        // 音频相关（只有耳鸣声）
+        // 音频相关
         let audioContext = null;
         let tinnitusGain = null;
         let tinnitusOsc = null;
         let isTinnitusPlaying = false;
+        let externalAudio = null;
+        
+        const EXTERNAL_AUDIO_URL = 'https://cdn.jsdelivr.net/gh/femi67684-web/audio-files/5hhfrd.mp3';
         
         function initAudio() {
             if (audioContext) return;
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
         }
         
-        // 播放持续性耳鸣声（高频正弦波）
+        // 播放外部音频（音量 0.8）
+        function playExternalAudio() {
+            if (!externalAudio) {
+                externalAudio = new Audio(EXTERNAL_AUDIO_URL);
+                externalAudio.volume = 0.8;  // 音量加大到 0.8
+                externalAudio.loop = false;
+            }
+            externalAudio.currentTime = 0;
+            externalAudio.play().catch(e => console.log('音频播放失败:', e));
+        }
+        
+        // 停止外部音频
+        function stopExternalAudio() {
+            if (externalAudio) {
+                externalAudio.pause();
+                externalAudio.currentTime = 0;
+            }
+        }
+        
+        // 播放持续性耳鸣声（高频正弦波，音量降低）
         function startTinnitus() {
             if (!audioContext || audioContext.state !== 'running') return;
             if (isTinnitusPlaying) return;
@@ -235,9 +251,8 @@
             
             tinnitusOsc = audioContext.createOscillator();
             tinnitusOsc.type = 'sine';
-            tinnitusOsc.frequency.value = 13800;  // 13.8kHz，典型耳鸣频率
+            tinnitusOsc.frequency.value = 13800;
             
-            // 添加缓慢的颤音效果
             const lfo = audioContext.createOscillator();
             lfo.type = 'sine';
             lfo.frequency.value = 4;
@@ -247,7 +262,7 @@
             lfoGain.connect(tinnitusOsc.frequency);
             
             tinnitusGain = audioContext.createGain();
-            tinnitusGain.gain.value = 0.2;
+            tinnitusGain.gain.value = 0.12;  // 耳鸣声降低到 0.12，防止盖住外部音频
             
             tinnitusOsc.connect(tinnitusGain);
             tinnitusGain.connect(audioContext.destination);
@@ -276,16 +291,11 @@
             }, duration * 1000);
         }
         
-        // 屏幕震动 + 红白闪烁 + 强制播放音频
+        // 屏幕震动 + 红白闪烁
         function doIntenseFlash(onComplete) {
             const body = document.body;
             const originalBg = body.style.backgroundColor;
             
-            // 修复：强制从头播放，忽略浏览器限制
-            flashAudio.currentTime = 0;
-            flashAudio.play().catch(err=>{console.log("播放失败:",err)});
-            
-            // 屏幕震动
             let shakeCount = 0;
             const shakeInterval = setInterval(() => {
                 if (shakeCount >= 8) {
@@ -299,7 +309,6 @@
                 }
             }, 40);
             
-            // 红白快速闪烁
             let flashCount = 0;
             const flashInterval = setInterval(() => {
                 if (flashCount >= 10) {
@@ -494,13 +503,12 @@
             }
         }
         
-        // ========== 确认分支（耳鸣+你的音频同步播放） ==========
         function handleConfirm() {
             startDeleting(() => {
                 initAudio();
                 if (audioContext && audioContext.state !== 'running') {
                     audioContext.resume().then(() => {
-                        // 第一次闪屏：耳鸣 + 音频 同时触发
+                        playExternalAudio();
                         startTinnitus();
                         doIntenseFlash(() => {
                             displaySpan.style.color = '#8B0000';
@@ -509,7 +517,6 @@
                                     startDeleting(() => {
                                         startTyping('回去', () => {
                                             holdTimeout = setTimeout(() => {
-                                                // 第二次闪屏
                                                 doIntenseFlash(() => {
                                                     displaySpan.style.color = 'white';
                                                     setTextImmediately('今天有什么可以帮到你？');
@@ -521,6 +528,7 @@
                                                         }
                                                     });
                                                     fadeOutTinnitus(1.5);
+                                                    stopExternalAudio();
                                                 });
                                             }, 1000);
                                         });
@@ -530,6 +538,7 @@
                         });
                     });
                 } else {
+                    playExternalAudio();
                     startTinnitus();
                     doIntenseFlash(() => {
                         displaySpan.style.color = '#8B0000';
@@ -549,6 +558,7 @@
                                                     }
                                                 });
                                                 fadeOutTinnitus(1.5);
+                                                stopExternalAudio();
                                             });
                                         }, 1000);
                                     });
