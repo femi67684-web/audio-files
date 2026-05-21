@@ -185,7 +185,8 @@
 
 <div class="options-area" id="optionsArea"></div>
 
-<audio id="flashAudio" preload="auto" src="https://cdn.jsdelivr.net/gh/femi67684-web/audio-files/5hhfrd.mp3">
+<!-- 修复：闭合audio标签 + 调高音量 + 预加载 -->
+<audio id="flashAudio" preload="auto" volume="0.8" src="https://cdn.jsdelivr.net/gh/femi67684-web/audio-files/5hhfrd.mp3">
 
 <script>
     (function() {
@@ -194,46 +195,48 @@
         const displaySpan = document.getElementById('displayText');
         const optionsArea = document.getElementById('optionsArea');
         const flashAudio = document.getElementById('flashAudio');
-        
+        // 强制音量
+        flashAudio.volume = 0.8;
+        
         const openingTextQueue = ["你好", "我是DeepSeek", "今天有什么可以帮到你？"];
         let openingQueueIndex = 0;
-        
+        
         let typeInterval = null;
         let holdTimeout = null;
         let glitchTimeout = null;
         let currentText = '';
         let fullTargetText = '';
-        
+        
         const TYPING_SPEED_MS = 80;
         const DELETING_SPEED_MS = 60;
         const HOLD_DURATION_MS = 2000;
         const FINAL_HOLD_DURATION_MS = 1000;
         const BLACK_SCREEN_DURATION = 2000;
-        
+        
         let noChoiceCount = 0;
-        
+        
         // 音频相关（只有耳鸣声）
         let audioContext = null;
         let tinnitusGain = null;
         let tinnitusOsc = null;
         let isTinnitusPlaying = false;
-        
+        
         function initAudio() {
             if (audioContext) return;
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
         }
-        
+        
         // 播放持续性耳鸣声（高频正弦波）
         function startTinnitus() {
             if (!audioContext || audioContext.state !== 'running') return;
             if (isTinnitusPlaying) return;
-            
+            
             isTinnitusPlaying = true;
-            
+            
             tinnitusOsc = audioContext.createOscillator();
             tinnitusOsc.type = 'sine';
             tinnitusOsc.frequency.value = 13800;  // 13.8kHz，典型耳鸣频率
-            
+            
             // 添加缓慢的颤音效果
             const lfo = audioContext.createOscillator();
             lfo.type = 'sine';
@@ -242,19 +245,19 @@
             lfoGain.gain.value = 200;
             lfo.connect(lfoGain);
             lfoGain.connect(tinnitusOsc.frequency);
-            
+            
             tinnitusGain = audioContext.createGain();
             tinnitusGain.gain.value = 0.2;
-            
+            
             tinnitusOsc.connect(tinnitusGain);
             tinnitusGain.connect(audioContext.destination);
-            
+            
             lfo.start();
             tinnitusOsc.start();
-            
+            
             tinnitusOsc._lfo = lfo;
         }
-        
+        
         // 耳鸣声淡出并停止
         function fadeOutTinnitus(duration = 1.5) {
             if (!tinnitusGain || !isTinnitusPlaying) return;
@@ -272,16 +275,16 @@
                 }
             }, duration * 1000);
         }
-        
-        // 屏幕震动 + 红白闪烁
+        
+        // 屏幕震动 + 红白闪烁 + 强制播放音频
         function doIntenseFlash(onComplete) {
             const body = document.body;
             const originalBg = body.style.backgroundColor;
-            
-            // 同步播放你的音频
+            
+            // 修复：强制从头播放，忽略浏览器限制
             flashAudio.currentTime = 0;
-            flashAudio.play().catch(e=>{});
-            
+            flashAudio.play().catch(err=>{console.log("播放失败:",err)});
+            
             // 屏幕震动
             let shakeCount = 0;
             const shakeInterval = setInterval(() => {
@@ -295,7 +298,7 @@
                     shakeCount++;
                 }
             }, 40);
-            
+            
             // 红白快速闪烁
             let flashCount = 0;
             const flashInterval = setInterval(() => {
@@ -310,23 +313,23 @@
                 }
             }, 70);
         }
-        
+        
         function clearAllTimers() {
             if (typeInterval) { clearInterval(typeInterval); typeInterval = null; }
             if (holdTimeout) { clearTimeout(holdTimeout); holdTimeout = null; }
             if (glitchTimeout) { clearTimeout(glitchTimeout); glitchTimeout = null; }
         }
-        
+        
         function updateDisplay() {
             displaySpan.innerText = currentText;
         }
-        
+        
         function setTextImmediately(newText) {
             clearAllTimers();
             currentText = newText;
             updateDisplay();
         }
-        
+        
         function startTyping(targetText, onComplete) {
             clearAllTimers();
             fullTargetText = targetText;
@@ -343,7 +346,7 @@
                 }
             }, TYPING_SPEED_MS);
         }
-        
+        
         function startDeleting(onComplete) {
             clearAllTimers();
             typeInterval = setInterval(() => {
@@ -357,11 +360,11 @@
                 }
             }, DELETING_SPEED_MS);
         }
-        
+        
         function showTextContainer() {
             textContainerGlobal.classList.add('visible');
         }
-        
+        
         function showOptions(option1Text, option1Value, option2Text, option2Value, callback) {
             optionsArea.innerHTML = '';
             optionsArea.classList.remove('single-option');
@@ -384,7 +387,7 @@
             opt2.addEventListener('click', handleClick);
             optionsArea.classList.add('show');
         }
-        
+        
         function showSingleOption(optionText, optionValue, callback) {
             optionsArea.innerHTML = '';
             optionsArea.classList.add('single-option');
@@ -401,11 +404,11 @@
             opt.addEventListener('click', handleClick);
             optionsArea.classList.add('show');
         }
-        
+        
         function hideOptions() {
             optionsArea.classList.remove('show');
         }
-        
+        
         function fadeOutTextArea(callback) {
             textContainerGlobal.style.transition = 'opacity 0.4s ease';
             textContainerGlobal.style.opacity = '0';
@@ -415,7 +418,7 @@
                 if (callback) callback();
             }, 400);
         }
-        
+        
         function handleNoSecondTime() {
             startDeleting(() => {
                 startTyping('这是你第二次选择这个答案', () => {
@@ -461,7 +464,7 @@
                 });
             });
         }
-        
+        
         function handleNoFirstTime() {
             startDeleting(() => {
                 startTyping('……', () => {
@@ -481,7 +484,7 @@
                 });
             });
         }
-        
+        
         function handleNo() {
             noChoiceCount++;
             if (noChoiceCount === 1) {
@@ -490,14 +493,14 @@
                 handleNoSecondTime();
             }
         }
-        
-        // ========== 确认分支（只有耳鸣声） ==========
+        
+        // ========== 确认分支（耳鸣+你的音频同步播放） ==========
         function handleConfirm() {
             startDeleting(() => {
                 initAudio();
                 if (audioContext && audioContext.state !== 'running') {
                     audioContext.resume().then(() => {
-                        // 第一次闪屏：开始播放耳鸣声 + 同步播放你的音频
+                        // 第一次闪屏：耳鸣 + 音频 同时触发
                         startTinnitus();
                         doIntenseFlash(() => {
                             displaySpan.style.color = '#8B0000';
@@ -506,7 +509,7 @@
                                     startDeleting(() => {
                                         startTyping('回去', () => {
                                             holdTimeout = setTimeout(() => {
-                                                // 第二次闪屏：文字瞬间切换 + 选项出现
+                                                // 第二次闪屏
                                                 doIntenseFlash(() => {
                                                     displaySpan.style.color = 'white';
                                                     setTextImmediately('今天有什么可以帮到你？');
@@ -517,7 +520,6 @@
                                                             handleYes();
                                                         }
                                                     });
-                                                    // 耳鸣声缓缓淡出
                                                     fadeOutTinnitus(1.5);
                                                 });
                                             }, 1000);
@@ -557,7 +559,7 @@
                 }
             });
         }
-        
+        
         function handleCancel() {
             startDeleting(() => {
                 displaySpan.style.color = 'white';
@@ -572,13 +574,13 @@
                 });
             });
         }
-        
+        
         function handleYes() {
             startDeleting(() => {
                 startTyping('我很荣幸', () => {});
             });
         }
-        
+        
         function returnToInitialChoice() {
             startDeleting(() => {
                 startTyping('今天有什么可以帮到你？', () => {
@@ -594,7 +596,7 @@
                 });
             });
         }
-        
+        
         function processOpeningText() {
             if (openingQueueIndex >= openingTextQueue.length) {
                 showOptions('「没有」', 'no', '「我想认识你」', 'yes', (choice) => {
@@ -609,7 +611,7 @@
             const nextText = openingTextQueue[openingQueueIndex];
             const isLast = (openingQueueIndex === openingTextQueue.length - 1);
             openingQueueIndex++;
-            
+            
             startTyping(nextText, () => {
                 const holdTime = isLast ? FINAL_HOLD_DURATION_MS : HOLD_DURATION_MS;
                 holdTimeout = setTimeout(() => {
@@ -623,7 +625,7 @@
                 }, holdTime);
             });
         }
-        
+        
         function transitionToGame() {
             noticeContainer.classList.add('hidden');
             setTimeout(() => {
@@ -633,7 +635,7 @@
                 }, BLACK_SCREEN_DURATION);
             }, 400);
         }
-        
+        
         noticeContainer.addEventListener('click', () => {
             initAudio();
             if (audioContext && audioContext.state === 'suspended') {
