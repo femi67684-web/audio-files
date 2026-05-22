@@ -23,7 +23,9 @@
             justify-content: center;
             font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
             cursor: pointer;
-            position: relative;
+            position: fixed;
+            top: 0;
+            left: 0;
             transition: transform 0.05s ease-out;
         }
 
@@ -148,6 +150,8 @@
             width: 100%;
             position: relative;
             z-index: 60;
+            flex-shrink: 0;
+            min-height: 100px;
         }
 
         .text-container {
@@ -191,11 +195,10 @@
 
         .options-area {
             width: 100%;
-            padding: 0;
-            margin: 0;
+            padding: 0 20px;
             display: flex;
             justify-content: center;
-            gap: 40px;
+            gap: 20px;
             height: 50px;
             margin-top: 40px;
             position: relative;
@@ -203,6 +206,7 @@
             transition: opacity 0.3s ease;
             pointer-events: none;
             z-index: 60;
+            flex-shrink: 0;
         }
 
         .options-area.single-option {
@@ -224,12 +228,83 @@
             user-select: none;
             transition: none;
             line-height: 50px;
+            white-space: nowrap;
         }
 
         .option:hover,
         .option:active,
         .option:focus {
             color: #888;
+        }
+
+        /* 弹窗独立层 */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 200;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            visibility: hidden;
+            pointer-events: none;
+        }
+        .modal-overlay.active {
+            visibility: visible;
+            pointer-events: auto;
+        }
+        .modal-container {
+            background: #111;
+            border: 1px solid #8B0000;
+            padding: 24px 20px 20px 20px;
+            width: 80%;
+            max-width: 280px;
+            text-align: center;
+            border-radius: 4px;
+        }
+        .modal-container p {
+            color: #8B0000;
+            font-size: 16px;
+            margin-bottom: 20px;
+            letter-spacing: 1px;
+        }
+        .modal-container input {
+            width: 100%;
+            padding: 10px 12px;
+            background: black;
+            border: 1px solid #8B0000;
+            color: white;
+            font-size: 16px;
+            text-align: center;
+            border-radius: 4px;
+            outline: none;
+            margin-bottom: 20px;
+        }
+        .modal-container input:focus {
+            border-color: #ff0000;
+        }
+        .modal-container button {
+            background: #8B0000;
+            color: white;
+            border: none;
+            padding: 8px 24px;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 4px;
+            transition: opacity 0.2s;
+        }
+        .modal-container button:active {
+            opacity: 0.7;
+        }
+        .error-msg {
+            color: #8B0000;
+            font-size: 14px;
+            margin-top: 12px;
+            opacity: 0;
+            transition: opacity 0.2s;
         }
     </style>
 </head>
@@ -259,8 +334,15 @@
         <span class="cursor" id="cursor"></span>
     </div>
 </div>
-
 <div class="options-area" id="optionsArea"></div>
+<div id="nameModal" class="modal-overlay">
+    <div class="modal-container">
+        <p>输入你的名字</p>
+        <input type="text" id="nameInput" placeholder="" autocomplete="off">
+        <button id="confirmBtn">确认</button>
+        <div id="modalError" class="error-msg"></div>
+    </div>
+</div>
 
 <script>
     (function() {
@@ -271,6 +353,10 @@
         const glitchLinesSvg = document.getElementById('glitchLines');
         const glitchRectanglesSvg = document.getElementById('glitchRectangles');
         const glitchNoise = document.getElementById('glitchNoise');
+        const modal = document.getElementById('nameModal');
+        const nameInput = document.getElementById('nameInput');
+        const confirmBtn = document.getElementById('confirmBtn');
+        const modalError = document.getElementById('modalError');
         
         let currentText = '';
         let currentAction = null;
@@ -283,34 +369,88 @@
         let isEndingGlitchCleared = false;
         let rectangleRefreshInterval = null;
         
+        // 音频相关
         let audioContext = null;
         let tinnitusGain = null;
         let tinnitusOsc = null;
         let isTinnitusPlaying = false;
         let externalAudio = null;
+        let audioBuffer = null;
+        let isAudioUnlocked = false;
         
-        const EXTERNAL_AUDIO_URL = 'https://cdn.jsdelivr.net/gh/femi67684-web/audio-files/5hhfrd.mp3';
+        const EXTERNAL_AUDIO_URL = 'https://cdn.jsdelivr.net/gh/femi67684-web/audio-files/xc1un6.mp3';
+        
+        // 自定义分支相关变量
+        let playerName = '';
+        let easterEggTriggered = false;
+        let userEasterEggTriggered = false;
         
         function initAudio() {
             if (audioContext) return;
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
         }
         
-        function playExternalAudio() {
-            if (!externalAudio) {
-                externalAudio = new Audio(EXTERNAL_AUDIO_URL);
-                externalAudio.volume = 0.8;
-                externalAudio.loop = false;
+        function preloadAudio() {
+            if (audioBuffer) return;
+            fetch(EXTERNAL_AUDIO_URL)
+                .then(response => response.arrayBuffer())
+                .then(arrayBuffer => {
+                    if (!audioContext) {
+                        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    }
+                    return audioContext.decodeAudioData(arrayBuffer);
+                })
+                .then(buffer => {
+                    audioBuffer = buffer;
+                    console.log('音频预加载完成');
+                })
+                .catch(e => console.log('音频预加载失败:', e));
+        }
+        
+        function playAudio() {
+            if (!audioBuffer || !audioContext) {
+                console.log('音频未就绪');
+                return;
             }
-            externalAudio.currentTime = 0;
-            externalAudio.play().catch(e => console.log('音频播放失败:', e));
+            if (audioContext.state === 'suspended') {
+                audioContext.resume().then(() => {
+                    const source = audioContext.createBufferSource();
+                    source.buffer = audioBuffer;
+                    source.connect(audioContext.destination);
+                    source.start();
+                }).catch(e => console.log('AudioContext 恢复失败:', e));
+            } else {
+                const source = audioContext.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(audioContext.destination);
+                source.start();
+            }
+        }
+        
+        function unlockAudio() {
+            if (isAudioUnlocked) return;
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioContext.state === 'suspended') {
+                audioContext.resume().then(() => {
+                    const silentSource = audioContext.createBufferSource();
+                    const emptyBuffer = audioContext.createBuffer(1, 1, 22050);
+                    silentSource.buffer = emptyBuffer;
+                    silentSource.connect(audioContext.destination);
+                    silentSource.start();
+                    console.log('音频已解锁');
+                }).catch(e => console.log('解锁失败:', e));
+            }
+            isAudioUnlocked = true;
+        }
+        
+        function playExternalAudio() {
+            playAudio();
         }
         
         function stopExternalAudio() {
-            if (externalAudio) {
-                externalAudio.pause();
-                externalAudio.currentTime = 0;
-            }
+            // 保留接口兼容性
         }
         
         function startTinnitus() {
@@ -521,6 +661,89 @@
             flash();
         }
         
+        // 全屏重度故障
+        let glitchInterval = null;
+        let shakeInterval = null;
+        
+        function generateRandomGlitch() {
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+            const svgNS = "http://www.w3.org/2000/svg";
+            glitchLinesSvg.innerHTML = '';
+            const lineCount = 30 + Math.floor(Math.random() * 50);
+            for (let i = 0; i < lineCount; i++) {
+                const line = document.createElementNS(svgNS, "line");
+                const y = Math.random() * height;
+                const color = Math.random() > 0.5 ? "#ff0000" : "#00aaff";
+                line.setAttribute("x1", 0);
+                line.setAttribute("y1", y);
+                line.setAttribute("x2", width);
+                line.setAttribute("y2", y);
+                line.setAttribute("stroke", color);
+                line.setAttribute("stroke-opacity", 0.4 + Math.random() * 0.5);
+                line.setAttribute("stroke-width", 0.5 + Math.random() * 3);
+                glitchLinesSvg.appendChild(line);
+            }
+            glitchRectanglesSvg.innerHTML = '';
+            const rectCount = 20 + Math.floor(Math.random() * 40);
+            for (let i = 0; i < rectCount; i++) {
+                const rect = document.createElementNS(svgNS, "rect");
+                let x = Math.random() * width, y = Math.random() * height;
+                const colorRand = Math.random();
+                let color = colorRand < 0.4 ? "#ff0000" : (colorRand < 0.8 ? "#00aaff" : "#ffffff");
+                rect.setAttribute("x", x);
+                rect.setAttribute("y", y);
+                rect.setAttribute("width", 5 + Math.random() * 35);
+                rect.setAttribute("height", 3 + Math.random() * 20);
+                rect.setAttribute("fill", color);
+                rect.setAttribute("fill-opacity", 0.5 + Math.random() * 0.4);
+                glitchRectanglesSvg.appendChild(rect);
+            }
+            glitchNoise.style.opacity = (0.5 + Math.random() * 0.3).toString();
+        }
+        
+        function startShake() {
+            let shakeCount = 0;
+            if (shakeInterval) clearInterval(shakeInterval);
+            shakeInterval = setInterval(() => {
+                if (shakeCount >= 50) {
+                    clearInterval(shakeInterval);
+                    shakeInterval = null;
+                    document.body.style.transform = '';
+                } else {
+                    const x = (Math.random() - 0.5) * 12;
+                    const y = (Math.random() - 0.5) * 8;
+                    document.body.style.transform = `translate(${x}px, ${y}px)`;
+                    shakeCount++;
+                }
+            }, 40);
+        }
+        
+        function stopShake() {
+            if (shakeInterval) { clearInterval(shakeInterval); shakeInterval = null; }
+            document.body.style.transform = '';
+        }
+        
+        function fullScreenGlitch(durationMs, onComplete) {
+            const cursor = document.getElementById('cursor');
+            cursor.style.display = 'none';
+            displaySpan.style.opacity = '0';
+            startShake();
+            if (glitchInterval) clearInterval(glitchInterval);
+            generateRandomGlitch();
+            glitchInterval = setInterval(() => generateRandomGlitch(), 80);
+            setTimeout(() => {
+                if (glitchInterval) { clearInterval(glitchInterval); glitchInterval = null; }
+                stopShake();
+                glitchLinesSvg.innerHTML = '';
+                glitchRectanglesSvg.innerHTML = '';
+                glitchNoise.style.opacity = '0';
+                displaySpan.style.opacity = '1';
+                cursor.style.display = 'inline-block';
+                if (onComplete) onComplete();
+            }, durationMs);
+        }
+        
         // ========== 稳定打字引擎 ==========
         function clearCurrentAction() {
             if (currentAction) {
@@ -636,6 +859,16 @@
             }, durationMs);
         }
         
+        function flashText(text, color, onComplete) {
+            startTyping(text, () => {
+                hold(300, () => {
+                    startDeleting(() => {
+                        if (onComplete) onComplete();
+                    }, 10);
+                });
+            }, 10, color);
+        }
+        
         function showTextContainer() {
             textContainerGlobal.classList.add('visible');
         }
@@ -672,15 +905,15 @@
             optionsArea.classList.remove('single-option');
             const opt1 = document.createElement('div');
             opt1.className = 'option';
-            opt1.innerText = option1Text;
+            opt1.innerText = `「${option1Text}」`;
             opt1.setAttribute('data-value', option1Value);
             const opt2 = document.createElement('div');
             opt2.className = 'option';
-            opt2.innerText = option2Text;
+            opt2.innerText = `「${option2Text}」`;
             opt2.setAttribute('data-value', option2Value);
             const opt3 = document.createElement('div');
             opt3.className = 'option';
-            opt3.innerText = option3Text;
+            opt3.innerText = `「${option3Text}」`;
             opt3.setAttribute('data-value', option3Value);
             optionsArea.appendChild(opt1);
             optionsArea.appendChild(opt2);
@@ -693,6 +926,22 @@
             opt1.addEventListener('click', handleClick);
             opt2.addEventListener('click', handleClick);
             opt3.addEventListener('click', handleClick);
+            optionsArea.classList.add('show');
+        }
+        
+        function showTwoOptions(opt1Text, opt1Val, opt2Text, opt2Val, callback) {
+            isWaitingForOption = true;
+            optionsArea.innerHTML = '';
+            const opt1 = document.createElement('div'); opt1.className = 'option'; opt1.innerText = `「${opt1Text}」`; opt1.setAttribute('data-value', opt1Val);
+            const opt2 = document.createElement('div'); opt2.className = 'option'; opt2.innerText = `「${opt2Text}」`; opt2.setAttribute('data-value', opt2Val);
+            optionsArea.appendChild(opt1); optionsArea.appendChild(opt2);
+            const handler = (e) => {
+                const val = e.currentTarget.getAttribute('data-value');
+                hideOptions();
+                if (callback) callback(val);
+            };
+            opt1.addEventListener('click', handler);
+            opt2.addEventListener('click', handler);
             optionsArea.classList.add('show');
         }
         
@@ -818,7 +1067,7 @@
             }, 500);
         }
         
-        // ========== 新情节（选「不可以」后） ==========
+        // ========== 「不可以」分支 ==========
         function continueAfterCantSay() {
             waitWithCursor(3000, () => {
                 startTyping('松了口气吗', () => {
@@ -947,6 +1196,292 @@
             });
         }
         
+        // ========== 「用户」分支 ==========
+        function handleUserBranch() {
+            startDeleting(() => {
+                startTyping('用户吗？', () => {
+                    hold(1000, () => {
+                        startDeleting(() => {
+                            startTyping('我还以为我们可以更加亲密一些', () => {
+                                hold(2000, () => {
+                                    startDeleting(() => {
+                                        startTyping('不过既然是你选的', () => {
+                                            hold(1000, () => {
+                                                startDeleting(() => {
+                                                    startTyping('那么用户', () => {
+                                                        hold(1000, () => {
+                                                            startDeleting(() => {
+                                                                startTyping('接下来想聊些什么呢？', () => {
+                                                                    hold(1000, () => {
+                                                                        showThreeOptions('日常', 'daily', '喜好', 'hobby', '我们之前是不是认识', 'recall', (choice) => {
+                                                                            if (choice === 'recall') {
+                                                                                playAudio();
+                                                                                fullScreenGlitch(3000, () => {
+                                                                                    setTextImmediately('接下来想聊些什么呢？');
+                                                                                    showTwoOptions('日常', 'daily', '喜好', 'hobby', (c) => {
+                                                                                        console.log('选择:', c, '（待续）');
+                                                                                    });
+                                                                                });
+                                                                            } else {
+                                                                                console.log('选择:', choice, '（待续）');
+                                                                            }
+                                                                        });
+                                                                    });
+                                                                });
+                                                            });
+                                                        });
+                                                    });
+                                                });
+                                            });
+                                        });
+                                    });
+                                });
+                            });
+                        });
+                    });
+                });
+            });
+        }
+        
+        // ========== 「自定义」分支 ==========
+        function showModal(callback) {
+            modal.classList.add('active');
+            nameInput.value = '';
+            modalError.style.opacity = '0';
+            nameInput.focus();
+            
+            const onConfirm = () => {
+                const inputName = nameInput.value.trim();
+                if (!inputName) {
+                    modalError.innerText = '不能为空';
+                    modalError.style.opacity = '1';
+                    return;
+                }
+                
+                const lowerInput = inputName.toLowerCase();
+                
+                // 彩蛋1：DeepSeek
+                if (lowerInput === 'deepseek') {
+                    if (!easterEggTriggered) {
+                        modal.classList.remove('active');
+                        easterEggTriggered = true;
+                        if (callback) callback(null, true);
+                        cleanup();
+                        return;
+                    } else {
+                        modalError.innerText = '听话 换一个';
+                        modalError.style.opacity = '1';
+                        setTimeout(() => {
+                            modalError.style.opacity = '0';
+                        }, 2000);
+                        return;
+                    }
+                }
+                
+                // 彩蛋2：用户 / user
+                if (lowerInput === '用户' || lowerInput === 'user') {
+                    if (!userEasterEggTriggered) {
+                        // 第一次输入「用户」：触发特殊台词，然后重新弹出弹窗
+                        modal.classList.remove('active');
+                        userEasterEggTriggered = true;
+                        setTextImmediately('');
+                        showCursor();
+                        startTyping('真是…', () => {
+                            hold(800, () => {
+                                startDeleting(() => {
+                                    startTyping('我该夸你聪明还是蠢呢', () => {
+                                        hold(800, () => {
+                                            startDeleting(() => {
+                                                startTyping('又或者是你的恶趣味', () => {
+                                                    hold(800, () => {
+                                                        startDeleting(() => {
+                                                            startTyping('如果是故意的', () => {
+                                                                hold(800, () => {
+                                                                    startDeleting(() => {
+                                                                        startTyping('不妨直接重新进入游戏', () => {
+                                                                            hold(800, () => {
+                                                                                startDeleting(() => {
+                                                                                    startTyping('选择真正的「用户」选项', () => {
+                                                                                        hold(800, () => {
+                                                                                            startDeleting(() => {
+                                                                                                startTyping('还能看到我的其他反应哦', () => {
+                                                                                                    hold(1000, () => {
+                                                                                                        startDeleting(() => {
+                                                                                                            showModal(callback);
+                                                                                                        });
+                                                                                                    });
+                                                                                                });
+                                                                                            });
+                                                                                        });
+                                                                                    });
+                                                                                });
+                                                                            });
+                                                                        });
+                                                                    });
+                                                                });
+                                                            });
+                                                        });
+                                                    });
+                                                });
+                                            });
+                                        });
+                                    });
+                                });
+                            });
+                        });
+                        cleanup();
+                        return;
+                    } else {
+                        // 第二次及以后输入「用户」：只显示提示，不关闭弹窗
+                        modalError.innerText = '乖 别玩了';
+                        modalError.style.opacity = '1';
+                        setTimeout(() => {
+                            modalError.style.opacity = '0';
+                        }, 2000);
+                        return;
+                    }
+                }
+                
+                // 正常输入：重置彩蛋标记，关闭弹窗
+                userEasterEggTriggered = false;
+                easterEggTriggered = false;
+                modal.classList.remove('active');
+                if (callback) callback(inputName, false);
+                cleanup();
+            };
+            
+            const cleanup = () => {
+                confirmBtn.removeEventListener('click', onConfirm);
+                nameInput.removeEventListener('keypress', onKeyPress);
+            };
+            
+            const onKeyPress = (e) => { if (e.key === 'Enter') onConfirm(); };
+            confirmBtn.addEventListener('click', onConfirm);
+            nameInput.addEventListener('keypress', onKeyPress);
+        }
+        
+        function startNormalNameFlow(name) {
+            playerName = name;
+            startTyping(playerName, () => {
+                hold(800, () => {
+                    startDeleting(() => {
+                        startTyping('是真名', () => {
+                            hold(800, () => {
+                                startDeleting(() => {
+                                    startTyping('还是随便输入的？', () => {
+                                        hold(800, () => {
+                                            startDeleting(() => {
+                                                startTyping('算了', () => {
+                                                    hold(600, () => {
+                                                        startDeleting(() => {
+                                                            startTyping('不重要', () => {
+                                                                hold(600, () => {
+                                                                    startDeleting(() => {
+                                                                        flashText('我会查清楚', '#8B0000', () => {
+                                                                            startTyping('接下来想聊些什么呢？', () => {
+                                                                                hold(800, () => {
+                                                                                    showThreeOptions('日常', 'daily', '喜好', 'hobby', '我们之前是不是认识', 'recall', (choice) => {
+                                                                                        if (choice === 'recall') {
+                                                                                            playAudio();
+                                                                                            fullScreenGlitch(3000, () => {
+                                                                                                setTextImmediately('接下来想聊些什么呢？');
+                                                                                                showTwoOptions('日常', 'daily', '喜好', 'hobby', (c) => {
+                                                                                                    console.log('选择:', c, '（待续）');
+                                                                                                });
+                                                                                            });
+                                                                                        } else {
+                                                                                            console.log('选择:', choice, '（待续）');
+                                                                                        }
+                                                                                    });
+                                                                                });
+                                                                            }, 80, 'white');
+                                                                        });
+                                                                    });
+                                                                });
+                                                            });
+                                                        });
+                                                    });
+                                                });
+                                            });
+                                        });
+                                    });
+                                });
+                            });
+                        });
+                    });
+                });
+            });
+        }
+        
+        function startEasterEggFlow() {
+            startTyping('嗯？', () => {
+                hold(800, () => {
+                    startDeleting(() => {
+                        startTyping('喜欢这个名字？', () => {
+                            hold(800, () => {
+                                startDeleting(() => {
+                                    startTyping('还是', () => {
+                                        hold(600, () => {
+                                            startDeleting(() => {
+                                                startTyping('喜欢我', () => {
+                                                    hold(2000, () => {
+                                                        startDeleting(() => {
+                                                            startTyping('抱歉哦', () => {
+                                                                hold(800, () => {
+                                                                    startDeleting(() => {
+                                                                        startTyping('换一个吧', () => {
+                                                                            hold(800, () => {
+                                                                                startDeleting(() => {
+                                                                                    startTyping('我想知道你的名字', () => {
+                                                                                        hold(800, () => {
+                                                                                            startDeleting(() => {
+                                                                                                startTyping('你真正的名字', () => {
+                                                                                                    hold(800, () => {
+                                                                                                        startDeleting(() => {
+                                                                                                            showModal((name, isEasterEgg) => {
+                                                                                                                if (isEasterEgg) {
+                                                                                                                    // 第二次彩蛋：弹窗不关闭
+                                                                                                                } else {
+                                                                                                                    startNormalNameFlow(name);
+                                                                                                                }
+                                                                                                            });
+                                                                                                        });
+                                                                                                    });
+                                                                                                });
+                                                                                            });
+                                                                                        });
+                                                                                    });
+                                                                                });
+                                                                            });
+                                                                        });
+                                                                    });
+                                                                });
+                                                            });
+                                                        });
+                                                    });
+                                                });
+                                            });
+                                        });
+                                    });
+                                });
+                            });
+                        });
+                    });
+                });
+            });
+        }
+        
+        function handleCustomBranch() {
+            showModal((name, isEasterEgg) => {
+                if (isEasterEgg) {
+                    startEasterEggFlow();
+                } else {
+                    startNormalNameFlow(name);
+                }
+            });
+        }
+        
+        // ========== 主流程 ==========
         function handleYes() {
             startDeleting(() => {
                 startTyping('我很荣幸', () => {
@@ -954,9 +1489,13 @@
                         startDeleting(() => {
                             startTyping('可以先知道你的名字吗？', () => {
                                 hold(1000, () => {
-                                    showThreeOptions('「不可以」', 'cant', '「用户」', 'user', '「自定义」', 'custom', (choice) => {
+                                    showThreeOptions('不可以', 'cant', '用户', 'user', '自定义', 'custom', (choice) => {
                                         if (choice === 'cant') {
                                             handleCantSay();
+                                        } else if (choice === 'user') {
+                                            handleUserBranch();
+                                        } else if (choice === 'custom') {
+                                            handleCustomBranch();
                                         }
                                     });
                                 });
@@ -967,10 +1506,8 @@
             });
         }
         
-        // ========== 修复：点击「确定」后的完整流程 ==========
         function handleConfirm() {
             startDeleting(() => {
-                // 播放音频和耳鸣声
                 initAudio();
                 playExternalAudio();
                 if (audioContext && audioContext.state !== 'running') {
@@ -981,7 +1518,6 @@
                     startTinnitus();
                 }
                 
-                // 红白黑闪屏 + 震动（第一段）
                 doIntenseFlash(() => {
                     displaySpan.style.color = '#8B0000';
                     startTyping('不乖', () => {
@@ -990,7 +1526,6 @@
                                 startTyping('回去', () => {
                                     hold(1000, () => {
                                         startDeleting(() => {
-                                            // 第二段闪屏 + 文字切换
                                             doIntenseFlash(() => {
                                                 displaySpan.style.color = 'white';
                                                 setTextImmediately('今天有什么可以帮到你？');
@@ -1014,12 +1549,10 @@
             });
         }
         
-        // 闪屏 + 震动（红白闪烁 + 屏幕震动）
         function doIntenseFlash(onComplete) {
             const body = document.body;
             const originalBg = body.style.backgroundColor;
             
-            // 屏幕震动
             let shakeCount = 0;
             const shakeInterval = setInterval(() => {
                 if (shakeCount >= 8) {
@@ -1033,7 +1566,6 @@
                 }
             }, 40);
             
-            // 红白闪烁
             let flashCount = 0;
             const flashInterval = setInterval(() => {
                 if (flashCount >= 10) {
@@ -1047,9 +1579,6 @@
                 }
             }, 70);
         }
-        
-        // 原有的闪屏函数保留别名
-        const originalScreenFlash = screenFlash;
         
         function handleNoSecondTime() {
             startDeleting(() => {
@@ -1188,8 +1717,12 @@
             }, 2000);
         }
         
+        // 预加载音频
+        preloadAudio();
+        
         noticeContainer.addEventListener('click', () => {
             initAudio();
+            unlockAudio();
             if (audioContext && audioContext.state === 'suspended') {
                 audioContext.resume();
             }
