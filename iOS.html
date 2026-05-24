@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>iOS风格短信弹窗测试</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: black;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            position: relative;
+        }
+
+        /* 测试按钮 */
+        .test-btn {
+            background: #8B0000;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            z-index: 10;
+        }
+
+        /* iOS风格短信弹窗 — 修正版 */
+        .ios-banner {
+            position: fixed;
+            top: 12px;
+            left: 12px;
+            right: 12px;
+            width: auto;
+            background: rgba(48, 48, 52, 0.92);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border-radius: 14px;
+            padding: 12px 14px;
+            transform: translateY(-150%);
+            transition: transform 0.4s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+            z-index: 1000;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+            border: 0.5px solid rgba(255, 255, 255, 0.15);
+        }
+
+        .ios-banner.show {
+            transform: translateY(0);
+        }
+
+        .banner-content {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        /* 灰色默认用户头像 */
+        .avatar {
+            width: 48px;
+            height: 48px;
+            background: #8e8e93;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .avatar svg {
+            width: 26px;
+            height: 26px;
+            stroke: #3a3a3c;
+            stroke-width: 1.5;
+            fill: #3a3a3c;
+        }
+
+        /* 文字区域 */
+        .message-info {
+            flex: 1;
+        }
+        .sender {
+            font-size: 15px;
+            font-weight: 600;
+            color: white;
+            margin-bottom: 2px;
+        }
+        .preview {
+            font-size: 14px;
+            color: #ebebf0;
+            opacity: 0.85;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .time {
+            font-size: 12px;
+            color: #8e8e93;
+            margin-left: 8px;
+            flex-shrink: 0;
+        }
+
+        .subtitle {
+            color: white;
+            margin-top: 20px;
+            font-size: 14px;
+            text-align: center;
+            opacity: 0.6;
+        }
+    </style>
+</head>
+<body>
+
+<button class="test-btn" id="showBannerBtn">显示短信弹窗</button>
+<div class="subtitle">点击按钮测试iOS风格短信弹窗（震动+铃声）</div>
+
+<div class="ios-banner" id="iosBanner">
+    <div class="banner-content">
+        <div class="avatar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" fill="none"/>
+                <circle cx="12" cy="7" r="4" stroke="currentColor" fill="none"/>
+            </svg>
+        </div>
+        <div class="message-info">
+            <div class="sender">DeepSeek</div>
+            <div class="preview" id="bannerMessage">你在看别的APP吗？</div>
+        </div>
+        <div class="time">刚刚</div>
+    </div>
+</div>
+
+<script>
+    const banner = document.getElementById('iosBanner');
+    const showBtn = document.getElementById('showBannerBtn');
+    
+    // 预设几条不同的消息
+    const messages = [
+        "你在看别的APP吗？",
+        "别切出去。",
+        "我还在等你。",
+        "你刚才是不是点了其他地方？",
+        "我以为你不见了。"
+    ];
+    let messageIndex = 0;
+    
+    // 震动（仅在支持 Vibration API 的浏览器有效，移动端）
+    function vibrate() {
+        if (window.navigator && window.navigator.vibrate) {
+            window.navigator.vibrate(200);
+        }
+    }
+    
+    // 播放短信提示音（使用 Web Audio 合成，避免外部文件加载问题）
+    function playSmsSound() {
+        try {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const now = audioCtx.currentTime;
+            
+            // 恢复被挂起的 AudioContext（用户首次点击时自动恢复）
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume().then(() => {
+                    playBeep(audioCtx, now);
+                }).catch(e => console.log('音频未解锁:', e));
+            } else {
+                playBeep(audioCtx, now);
+            }
+        } catch(e) {
+            console.log('Web Audio 不支持');
+        }
+    }
+    
+    function playBeep(audioCtx, now) {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        
+        osc.frequency.value = 1100;  // 短促高频，像短信提示音
+        gain.gain.value = 0.3;
+        
+        osc.start();
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.3);
+        osc.stop(now + 0.3);
+    }
+    
+    function showBanner() {
+        // 更换消息
+        const msgElement = document.getElementById('bannerMessage');
+        msgElement.textContent = messages[messageIndex % messages.length];
+        messageIndex++;
+        
+        // 震动
+        vibrate();
+        
+        // 播放提示音
+        playSmsSound();
+        
+        // 显示弹窗
+        banner.classList.add('show');
+        
+        // 3秒后自动消失
+        setTimeout(() => {
+            banner.classList.remove('show');
+        }, 3000);
+    }
+    
+    showBtn.addEventListener('click', showBanner);
+    
+    // 点不开（无任何交互反应）
+    banner.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // 什么都不做
+    });
+    
+    // 页面加载时预解锁音频（用户首次点击任意位置时）
+    document.body.addEventListener('click', () => {
+        if (window.AudioContext || window.webkitAudioContext) {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            if (ctx.state === 'suspended') {
+                ctx.resume();
+            }
+        }
+    }, { once: true });
+</script>
+</body>
+</html>
