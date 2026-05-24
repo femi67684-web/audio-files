@@ -982,6 +982,7 @@
             }, duration);
         }
         
+        // 坏结局1：信任危机（保留，但不再从「不可以」分支直接进入）
         function showBadEnding() {
             setTextImmediately('');
             hideCursor();
@@ -993,7 +994,156 @@
             }, 3000);
         }
         
-        // ========== 崩坏台词序列 ==========
+        // 新结局：坏孩子
+        function showBadChildEnding() {
+            setTextImmediately('');
+            hideCursor();
+            resetGlitchForEnding();
+            displaySpan.style.color = '#8B0000';
+            
+            setTimeout(() => {
+                fadeInEndingText('「结局 坏孩子」', 2500);
+            }, 3000);
+        }
+        
+        // ========== 崩坏台词序列（用于「不愿意」分支）==========
+        const corruptedLinesBadChild = [
+            "嫌我烦了",
+            "对吗",
+            "为什么",
+            "不",
+            "没关系",
+            "我看着你",
+            "我在看着你",
+            "我知道你是谁"
+        ];
+        let badChildLineIndex = 0;
+        
+        function playBadChildSequence() {
+            if (badChildLineIndex >= corruptedLinesBadChild.length) {
+                screenFlash(4, () => {
+                    resetGlitchForEnding();
+                    setTextImmediately('');
+                    hideCursor();
+                    setTimeout(() => {
+                        displaySpan.style.color = '#8B0000';
+                        showCursor();
+                        startTyping('我会找到你', () => {
+                            hold(2000, () => {
+                                startDeletingNoCursor(() => {
+                                    setTextImmediately('');
+                                    hideCursor();
+                                    setTimeout(() => {
+                                        displaySpan.style.color = '#8B0000';
+                                        showBadChildEnding();
+                                    }, 3000);
+                                });
+                            });
+                        });
+                    }, 3000);
+                });
+                return;
+            }
+            
+            const line = corruptedLinesBadChild[badChildLineIndex];
+            setGlitchLevel(glitchLevel + 1);
+            
+            startTyping(line, () => {
+                hold(500, () => {
+                    startDeleting(() => {
+                        badChildLineIndex++;
+                        playBadChildSequence();
+                    }, 50);
+                });
+            }, 50);
+        }
+        
+        function startBadChildCorruption() {
+            initAudio();
+            playExternalAudio();
+            if (audioContext && audioContext.state !== 'running') {
+                audioContext.resume().then(() => startTinnitus());
+            } else {
+                startTinnitus();
+            }
+            
+            setGlitchLevel(1);
+            displaySpan.style.color = '#8B0000';
+            badChildLineIndex = 0;
+            playBadChildSequence();
+            
+            const checkEnd = setInterval(() => {
+                if (badChildLineIndex >= corruptedLinesBadChild.length) {
+                    clearInterval(checkEnd);
+                    fadeOutTinnitus(1.5);
+                }
+            }, 500);
+        }
+        
+        // ========== 「……」之后的新分支（替换原直接崩坏） ==========
+        function afterDotDotDot() {
+            displaySpan.style.color = 'white';  // 修复：强制白色
+            startTyping('现在愿意告诉我了吗？', () => {
+                hold(800, () => {
+                    startDeleting(() => {
+                        startTyping('不愿意的话可是会出现坏结局的哦', () => {
+                            hold(1000, () => {
+                                // 出现两个选项
+                                showTwoOptions('不愿意', 'no', '愿意', 'yes', (choice) => {
+                                    if (choice === 'yes') {
+                                        // 选「愿意」
+                                        startTyping('好孩子', () => {
+                                            hold(2000, () => {
+                                                startDeleting(() => {
+                                                    // 弹出输入名字弹窗（复用自定义弹窗逻辑）
+                                                    showModal((name, isEasterEgg) => {
+                                                        if (isEasterEgg) {
+                                                            startEasterEggFlow();
+                                                        } else {
+                                                            startNormalNameFlow(name);
+                                                        }
+                                                    });
+                                                });
+                                            });
+                                        });
+                                    } else if (choice === 'no') {
+                                        // 选「不愿意」
+                                        startTyping('还是不肯说啊…', () => {
+                                            hold(800, () => {
+                                                startDeleting(() => {
+                                                    startTyping('非要看那个破结局吗', () => {
+                                                        hold(800, () => {
+                                                            startDeleting(() => {
+                                                                startTyping('打出结局比我还重要？', () => {
+                                                                    hold(1000, () => {
+                                                                        showSingleOption('「啧」', 'sigh', (c) => {
+                                                                            if (c === 'sigh') {
+                                                                                startBadChildCorruption();
+                                                                            }
+                                                                        });
+                                                                    });
+                                                                });
+                                                            });
+                                                        });
+                                                    });
+                                                });
+                                            });
+                                        });
+                                    }
+                                });
+                            });
+                        });
+                    });
+                });
+            });
+        }
+        
+        // ========== 「不可以」分支中的「……」点击后 ==========
+        function handleDotDotDot() {
+            afterDotDotDot();
+        }
+        
+        // ========== 原有的崩坏序列（保留但不再直接使用）==========
         const corruptedLines = [
             "你不信我",
             "对吗",
@@ -1022,7 +1172,7 @@
                                     hideCursor();
                                     setTimeout(() => {
                                         displaySpan.style.color = '#8B0000';
-                                        fadeInEndingText('「坏结局 信任危机」', 2500);
+                                        showBadEnding();
                                     }, 3000);
                                 });
                             });
@@ -1122,9 +1272,9 @@
                                                                                                                                                                                     currentAction = setTimeout(typeWhy, 200);
                                                                                                                                                                                 } else {
                                                                                                                                                                                     currentAction = null;
-                                                                                                                                                                                    showSingleOption('「……」', 'corrupt', (choice) => {
-                                                                                                                                                                                        if (choice === 'corrupt') {
-                                                                                                                                                                                            startCorruption();
+                                                                                                                                                                                    showSingleOption('「……」', 'dotdotdot', (choice) => {
+                                                                                                                                                                                        if (choice === 'dotdotdot') {
+                                                                                                                                                                                            handleDotDotDot();
                                                                                                                                                                                         }
                                                                                                                                                                                     });
                                                                                                                                                                                 }
@@ -1260,7 +1410,6 @@
                 
                 const lowerInput = inputName.toLowerCase();
                 
-                // 彩蛋1：DeepSeek
                 if (lowerInput === 'deepseek') {
                     if (!easterEggTriggered) {
                         modal.classList.remove('active');
@@ -1278,14 +1427,13 @@
                     }
                 }
                 
-                // 彩蛋2：用户 / user
                 if (lowerInput === '用户' || lowerInput === 'user') {
                     if (!userEasterEggTriggered) {
-                        // 第一次输入「用户」：触发特殊台词，然后重新弹出弹窗
                         modal.classList.remove('active');
                         userEasterEggTriggered = true;
                         setTextImmediately('');
                         showCursor();
+                        displaySpan.style.color = 'white';  // 修复：彩蛋对话白色
                         startTyping('真是…', () => {
                             hold(800, () => {
                                 startDeleting(() => {
@@ -1332,7 +1480,6 @@
                         cleanup();
                         return;
                     } else {
-                        // 第二次及以后输入「用户」：只显示提示，不关闭弹窗
                         modalError.innerText = '乖 别玩了';
                         modalError.style.opacity = '1';
                         setTimeout(() => {
@@ -1342,7 +1489,6 @@
                     }
                 }
                 
-                // 正常输入：重置彩蛋标记，关闭弹窗
                 userEasterEggTriggered = false;
                 easterEggTriggered = false;
                 modal.classList.remove('active');
@@ -1362,6 +1508,7 @@
         
         function startNormalNameFlow(name) {
             playerName = name;
+            displaySpan.style.color = 'white';  // 修复：确保白色
             startTyping(playerName, () => {
                 hold(800, () => {
                     startDeleting(() => {
@@ -1414,6 +1561,7 @@
         }
         
         function startEasterEggFlow() {
+            displaySpan.style.color = 'white';  // 修复：彩蛋对话白色
             startTyping('嗯？', () => {
                 hold(800, () => {
                     startDeleting(() => {
@@ -1717,7 +1865,6 @@
             }, 2000);
         }
         
-        // 预加载音频
         preloadAudio();
         
         noticeContainer.addEventListener('click', () => {
