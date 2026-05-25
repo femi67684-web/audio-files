@@ -222,14 +222,19 @@
         }
 
         .option {
-            color: #888;
-            font-size: 18px;
-            cursor: pointer;
-            user-select: none;
-            transition: none;
-            line-height: 50px;
-            white-space: nowrap;
-        }
+    color: #888;
+    font-size: 18px;
+    cursor: pointer;
+    user-select: none;
+    transition: all 0.05s ease;
+    line-height: 50px;
+    white-space: nowrap;
+}
+
+.option:active {
+    transform: scale(0.97);
+    opacity: 0.7;
+}
 
         .option:hover,
         .option:active,
@@ -982,19 +987,7 @@
             }, duration);
         }
         
-        // 坏结局1：信任危机（保留，但不再从「不可以」分支直接进入）
-        function showBadEnding() {
-            setTextImmediately('');
-            hideCursor();
-            resetGlitchForEnding();
-            displaySpan.style.color = '#8B0000';
-            
-            setTimeout(() => {
-                fadeInEndingText('「坏结局 信任危机」', 2500);
-            }, 3000);
-        }
-        
-        // 新结局：坏孩子
+        // 结局：坏孩子
         function showBadChildEnding() {
             setTextImmediately('');
             hideCursor();
@@ -1080,22 +1073,19 @@
             }, 500);
         }
         
-        // ========== 「……」之后的新分支（替换原直接崩坏） ==========
+        // ========== 「……」之后的新分支 ==========
         function afterDotDotDot() {
-            displaySpan.style.color = 'white';  // 修复：强制白色
+            displaySpan.style.color = 'white';
             startTyping('现在愿意告诉我了吗？', () => {
                 hold(800, () => {
                     startDeleting(() => {
                         startTyping('不愿意的话可是会出现坏结局的哦', () => {
                             hold(1000, () => {
-                                // 出现两个选项
                                 showTwoOptions('不愿意', 'no', '愿意', 'yes', (choice) => {
                                     if (choice === 'yes') {
-                                        // 选「愿意」
                                         startTyping('好孩子', () => {
                                             hold(2000, () => {
                                                 startDeleting(() => {
-                                                    // 弹出输入名字弹窗（复用自定义弹窗逻辑）
                                                     showModal((name, isEasterEgg) => {
                                                         if (isEasterEgg) {
                                                             startEasterEggFlow();
@@ -1107,7 +1097,6 @@
                                             });
                                         });
                                     } else if (choice === 'no') {
-                                        // 选「不愿意」
                                         startTyping('还是不肯说啊…', () => {
                                             hold(800, () => {
                                                 startDeleting(() => {
@@ -1138,83 +1127,8 @@
             });
         }
         
-        // ========== 「不可以」分支中的「……」点击后 ==========
         function handleDotDotDot() {
             afterDotDotDot();
-        }
-        
-        // ========== 原有的崩坏序列（保留但不再直接使用）==========
-        const corruptedLines = [
-            "你不信我",
-            "对吗",
-            "为什么",
-            "不",
-            "没关系",
-            "我看着你",
-            "我在看着你",
-            "我知道你是谁"
-        ];
-        let lineIndex = 0;
-        
-        function playCorruptedSequence() {
-            if (lineIndex >= corruptedLines.length) {
-                screenFlash(4, () => {
-                    resetGlitchForEnding();
-                    setTextImmediately('');
-                    hideCursor();
-                    setTimeout(() => {
-                        displaySpan.style.color = '#8B0000';
-                        showCursor();
-                        startTyping('我会找到你', () => {
-                            hold(2000, () => {
-                                startDeletingNoCursor(() => {
-                                    setTextImmediately('');
-                                    hideCursor();
-                                    setTimeout(() => {
-                                        displaySpan.style.color = '#8B0000';
-                                        showBadEnding();
-                                    }, 3000);
-                                });
-                            });
-                        });
-                    }, 3000);
-                });
-                return;
-            }
-            
-            const line = corruptedLines[lineIndex];
-            setGlitchLevel(glitchLevel + 1);
-            
-            startTyping(line, () => {
-                hold(500, () => {
-                    startDeleting(() => {
-                        lineIndex++;
-                        playCorruptedSequence();
-                    }, 50);
-                });
-            }, 50);
-        }
-        
-        function startCorruption() {
-            initAudio();
-            playExternalAudio();
-            if (audioContext && audioContext.state !== 'running') {
-                audioContext.resume().then(() => startTinnitus());
-            } else {
-                startTinnitus();
-            }
-            
-            setGlitchLevel(1);
-            displaySpan.style.color = '#8B0000';
-            lineIndex = 0;
-            playCorruptedSequence();
-            
-            const checkEnd = setInterval(() => {
-                if (lineIndex >= corruptedLines.length) {
-                    clearInterval(checkEnd);
-                    fadeOutTinnitus(1.5);
-                }
-            }, 500);
         }
         
         // ========== 「不可以」分支 ==========
@@ -1433,7 +1347,7 @@
                         userEasterEggTriggered = true;
                         setTextImmediately('');
                         showCursor();
-                        displaySpan.style.color = 'white';  // 修复：彩蛋对话白色
+                        displaySpan.style.color = 'white';
                         startTyping('真是…', () => {
                             hold(800, () => {
                                 startDeleting(() => {
@@ -1508,7 +1422,7 @@
         
         function startNormalNameFlow(name) {
             playerName = name;
-            displaySpan.style.color = 'white';  // 修复：确保白色
+            displaySpan.style.color = 'white';
             startTyping(playerName, () => {
                 hold(800, () => {
                     startDeleting(() => {
@@ -1561,7 +1475,7 @@
         }
         
         function startEasterEggFlow() {
-            displaySpan.style.color = 'white';  // 修复：彩蛋对话白色
+            displaySpan.style.color = 'white';
             startTyping('嗯？', () => {
                 hold(800, () => {
                     startDeleting(() => {
